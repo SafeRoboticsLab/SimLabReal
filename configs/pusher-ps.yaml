@@ -1,0 +1,49 @@
+vis: 0
+
+prior-model-path: "models/pusher-pr-easy/step_59_cost_12.th"
+env-name: "Pusher-v0"
+
+latent_size: 2
+sparse_reward: false
+
+num-batches: 1000
+num-train-task: 100
+num-test-task: 50
+fast-batch-size: 40
+num-steps: 1
+
+fast-lr: 10
+meta-lr: 0.1
+kl-ratio: 0.01
+
+# Policy network
+hidden-sizes: [100, 100]
+nonlinearity: "tanh"
+
+######################### DO NOT CHANGE #########################
+
+# Discount factor gamma.
+gamma: 0.99
+
+# Discount factor lambda used in "Generalized Advantage Estimation" (GAE).
+gae-lambda: 1.0
+
+# If "true", then the first order approximation of MAML is applied.
+first-order: false
+
+# # TRPO-specific
+# # -------------
+# # Size of the trust-region.
+# max-kl: 1.0e-2
+
+# # Number of iterations of Conjugate Gradient.
+# cg-iters: 10
+
+# # Value of the damping in Conjugate Gradient.
+# cg-damping: 1.0e-5
+
+# # Maximum number of steps in the line search.
+# ls-max-steps: 15
+
+# # Ratio to use for backtracking during the line search.
+# ls-backtrack-ratio: 0.8
