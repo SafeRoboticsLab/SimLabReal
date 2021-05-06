@@ -40,6 +40,8 @@ class NormalMLPPolicy(Policy):
 							nn.Linear(layer_sizes[i - 1], layer_sizes[i]))
 
 		self.mu = nn.Linear(layer_sizes[-1], output_size)
+
+		#! sigma not a function of input?
 		self.sigma = nn.Parameter(torch.Tensor(output_size))
 		self.sigma.data.fill_(math.log(init_std))
 		self.apply(weight_init)

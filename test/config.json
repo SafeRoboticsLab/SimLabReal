@@ -1,0 +1,31 @@
+{
+  "vis": 0,
+  "env-name": "NavigationObs-v0",
+  "latent_size": 2,
+  "gamma": 0.99,
+  "gae-lambda": 1.0,
+  "first-order": false,
+  "hidden-sizes": [
+    100,
+    100
+  ],
+  "nonlinearity": "tanh",
+  "num-train-task": 100,
+  "num-test-task": 10,
+  "fast-batch-size": 1,
+  "num-steps": 0,
+  "fast-lr": 10,
+  "num-batches": 250,
+  "meta-batch-size": 20,
+  "max-kl": 0.01,
+  "cg-iters": 10,
+  "cg-damping": 1e-05,
+  "ls-max-steps": 15,
+  "ls-backtrack-ratio": 0.8,
+  "config": "configs/navigation-obs.yaml",
+  "output_folder": "test/",
+  "seed": 0,
+  "num_workers": 10,
+  "use_cuda": false,
+  "device": "cpu"
+}

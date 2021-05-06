@@ -127,7 +127,6 @@ class MultiTaskSampler(Sampler):
 
 		for index, task in enumerate(tasks):
 			self.task_queue.put((index, task, kwargs))
-
 		num_steps = kwargs.get('num_steps', 1)
 		futures = self._start_consumer_threads(tasks,
 											   num_steps=num_steps)
@@ -169,6 +168,10 @@ class MultiTaskSampler(Sampler):
 
 	def _start_consumer_threads(self, tasks, num_steps=1):
 		# Start train episodes consumer thread
+
+		#!
+		num_steps = max(num_steps, 1)
+
 		train_episodes_futures = [[self._event_loop.create_future() for _ in tasks] for _ in range(num_steps)]
 		self._train_consumer_thread = threading.Thread(target=_create_consumer,
 			args=(self.train_episodes_queue, train_episodes_futures),
@@ -307,6 +310,8 @@ class SamplerWorker(mp.Process):
 			self.train_queue.put((index, step, deepcopy(train_episodes)))
 
 			with self.policy_lock:
+       
+				# TODO: with latent but update theta
 				if self.latent_size > 0:
 					# repeat latent for the whole trajectory
 					num_step = train_episodes.observations.shape[0]
@@ -351,6 +356,9 @@ class SamplerWorker(mp.Process):
 			valid_episodes.latent = latent.clone().detach()
 		
 		valid_episodes.log('_enqueueAt', datetime.now(timezone.utc))
+
+		#! no train_futures for now
+		self.train_queue.put((index, 0, deepcopy(valid_episodes)))
 		self.valid_queue.put((index, None, deepcopy(valid_episodes)))
 
 	def create_episodes(self,
