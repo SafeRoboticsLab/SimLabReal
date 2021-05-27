@@ -19,3 +19,8 @@ register(
     max_episode_steps=50
 )
 
+register(
+    'NavigationPBObs-v0',
+    entry_point='maml_rl.envs.navigation_obs:NavigationObsPBEnv',
+    max_episode_steps=50
+)
