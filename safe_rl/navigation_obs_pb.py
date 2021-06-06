@@ -1,11 +1,8 @@
-import sys
-sys.path.insert(0, '../utils')
-import time
 import numpy as np
 import pybullet as pb
 from pybullet_utils import bullet_client as bc
 import gym
-from utils.geom import euler2rot 
+from utils_geom import euler2rot 
 
 class NavigationObsPBEnv(gym.Env):
 	"""Simple 2D navigation with obstacle using PyBullet. No dynamics/collision simulation. If PyBullet is not fast enough, we can use a renderer instead.
