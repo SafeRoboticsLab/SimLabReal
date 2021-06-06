@@ -239,15 +239,20 @@ class NavigationObsPBEnv(gym.Env):
 								self._p.getQuaternionFromEuler([0,0,theta_new]))
 
 		# Reward: goal and obstacle  TODO: tuning?
-		x_goal = self._state[0] - self._goal[0]
-		y_goal = self._state[1] - self._goal[1]
-		x_obs = self._state[0] - self._obs_loc[0]
-		y_obs = self._state[1] - self._obs_loc[1]
-		dist_to_goal = np.sqrt(x_goal ** 2 + y_goal ** 2)
-		reward_goal = -dist_to_goal
+		x_goal = x - self._goal[0]
+		y_goal = y - self._goal[1]
+		x_obs = x - self._obs_loc[0]
+		y_obs = y - self._obs_loc[1]
+		l = np.sqrt(x_goal ** 2 + y_goal ** 2)
+		reward_goal = -l
 
+		dist_to_back_wall = x
+		dist_to_left_wall = self.state_dim/2-y
+		dist_to_right_wall = self.state_dim/2+y
+		dist_to_front_wall = self.state_dim - x
 		dist_to_obs_center = np.sqrt(x_obs ** 2 + y_obs ** 2)
 		dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
+		g = min([dist_to_back_wall, dist_to_left_wall, dist_to_right_wall, dist_to_front_wall, dist_to_obs_boundary])
 		# print(dist_to_obs_center, self._goal, self._obs_loc, self._obs_radius)
 		if dist_to_obs_center < self._obs_radius:
 			reward_obs = -1
@@ -256,11 +261,11 @@ class NavigationObsPBEnv(gym.Env):
 		else:
 			reward_obs = 0
 		reward = reward_goal + reward_obs
-		done = (dist_to_goal < self._goal_thres)
+		done = (l < self._goal_thres)
 		return self._get_obs(), reward, done, {'task': self._task, 
 											'state': self._state,
-                                     		'g': dist_to_obs_boundary, 
-                                       		'l': dist_to_goal}
+                                     		'g': g,
+                                       		'l': l}
 
 	################ Not used in episode ################
 
