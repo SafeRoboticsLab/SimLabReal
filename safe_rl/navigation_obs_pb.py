@@ -36,6 +36,11 @@ class NavigationObsPBEnv(gym.Env):
 
         # Define dimensions
         self.state_bound = 2.
+        self.bounds = np.array([[0., self.state_bound],
+                                [-self.state_bound/2, self.state_bound/2],
+                                [0, 2*np.pi]])
+        self.low = self.bounds[:, 0]
+        self.high = self.bounds[:, 1]
         self.wall_height = 1.
         self.wall_thickness = 0.05
         self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
@@ -48,7 +53,7 @@ class NavigationObsPBEnv(gym.Env):
             shape=(img_H, img_W), dtype=np.float32)
 
         # Car initial x/y/theta
-        self.car_init_state = [0.1, 0., 0.]
+        self.car_init_state = np.array([0.1, 0., 0.])
 
         # Car dynamics
         self.state_dim = 3
@@ -98,13 +103,16 @@ class NavigationObsPBEnv(gym.Env):
         self._obs_radius = task['obs_radius']
 
 
-    def reset(self):
-        self._state = np.zeros(self.state_dim, dtype=np.float32)
+    def reset(self, random_init=False, sample_inside_obs=False, sample_inside_tar=True):
+        if random_init:
+            self._state = self.sample_state(sample_inside_obs, sample_inside_tar)
+        else:
+            self._state = self.car_init_state
 
         # Start PyBullet session if first time
-        print("-----------reset simulation---------------")
+        print("----------- reset simulation ---------------")
         if self._physics_client_id < 0:
-            print("-----------start pybullet---------------")
+            print("------------ start pybullet ----------------")
             if self._renders:
                 self._p = bc.BulletClient(connection_mode=pb.GUI)
             else:
@@ -217,14 +225,37 @@ class NavigationObsPBEnv(gym.Env):
                     baseMass=0, # no dynamics
                     baseCollisionShapeIndex=car_collision_id,
                     baseVisualShapeIndex=car_visual_id,
-                    basePosition=self.car_init_state[:2]+[0.03],
+                    basePosition=np.append(self._state[:2], 0.03),
                     baseOrientation=p.getQuaternionFromEuler([0,0,0]))
 
         p.stepSimulation()
         # pos, orn = p.getBasePositionAndOrientation(self.car_id)
         # euler = p.getEulerFromQuaternion(orn)
-        self._state = self.car_init_state
         return self._get_obs()
+
+
+    def sample_state(self, sample_inside_obs=False, sample_inside_tar=True):
+        # random sample `theta`
+        theta_rnd = 2.0 * np.pi * np.random.uniform() 
+
+        # random sample [`x`, `y`]
+        flag = True
+        low = self.low[:2]
+        high = self.high[:2]
+        while flag:
+            rnd_state = np.random.uniform(low=low, high=high)
+            l_x = self.target_margin(rnd_state)
+            g_x = self.safety_margin(rnd_state)
+
+            if (not sample_inside_obs) and (g_x > 0):
+                flag = True
+            elif (not sample_inside_tar) and (l_x <= 0):
+                flag = True
+            else:
+                flag = False
+        x_rnd, y_rnd = rnd_state
+
+        return np.array([x_rnd, y_rnd, theta_rnd])
 
 
     def _get_obs(self):
@@ -337,21 +368,18 @@ class NavigationObsPBEnv(gym.Env):
         x_new = x + self.v*np.cos(theta)*self.dt
         y_new = y + self.v*np.sin(theta)*self.dt
         theta_new = np.mod(theta + w*self.dt, 2*np.pi)
-        state = [x_new, y_new, theta_new]
+        state = np.array([x_new, y_new, theta_new])
 
         return state
 
 
     #== GETTER ==
     def check_within_bounds(self, state):
-        if state[0] < -self.state_bound:
-            return False
-        if state[1] < -self.state_bound:
-            return False
-        if state[0] > self.state_bound:
-            return False
-        if state[1] > self.state_bound:
-            return False
+        for dim, bound in enumerate(self.bounds):
+            flagLow = state[dim] < bound[0]
+            flagHigh = state[dim] > bound[1]
+            if flagLow or flagHigh:
+                return False
         return True
 
 
@@ -406,8 +434,9 @@ class NavigationObsPBEnv(gym.Env):
         """
         s = state[:2]
 
-        # ? CONFIRM IF THE BOUND IS WITHIN [-1, 1] IN BOTH X-Y
-        x_y_w_h = [0., 0., self.state_bound, self.state_bound]
+        x, y = (self.low + self.high)[:2] / 2.0
+        w, h = (self.high - self.low)[:2]
+        x_y_w_h = [x, y, w, h]
         boundary_margin = self._calculate_margin_rect(s, x_y_w_h, negativeInside=True)
         g_xList = [boundary_margin]
 
@@ -420,7 +449,6 @@ class NavigationObsPBEnv(gym.Env):
 
 
     ################ Not used in episode ################
-
     def sample_tasks(self, num_tasks):
         # xpos = radius*np.cos(angle)
         # ypos = radius*np.sin(angle)
@@ -438,7 +466,6 @@ if __name__ == '__main__':
 
     # Test single environment in GUI
     env = NavigationObsPBEnv(render=True)
-    obs = env.reset()
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
     print("- state bound: {:.2f}, done type: {}".format(env.state_bound, env.doneType))
@@ -446,8 +473,15 @@ if __name__ == '__main__':
     # fig = plt.figure()
     # plt.imshow(obs, cmap='Greys')
     # plt.show()
+    # print(env.safety_margin(np.array([-1.5, .5])))
+    # print(env.safety_margin(np.array([1.5, .5])))
+    # print(env.safety_margin(np.array([.5, 1.5])))
+    # print(env.safety_margin(np.array([.5, -1.5])))
 
-    # Run one trial
+    # Run 3 trials
+    # for i in range(3):
+    #     print('\n== {} =='.format(i))
+    obs = env.reset(random_init=False)
     for t in range(100):
         # Apply random action
         # action = random.randint(0,2)
@@ -457,13 +491,17 @@ if __name__ == '__main__':
 
         # Debug
         x, y, yaw = state
-        print('[{}] a: {:.2f}, x: {:.3f}, y: {:.3f}, yaw: {:.3f}, r: {:.3f}, d: {}'.format(
-            t, action, x, y, yaw, r, done))
+        l_x = info['l_x']
+        g_x = info['g_x']
+        # print('[{}] a: {:.2f}, x: {:.3f}, y: {:.3f}, yaw: {:.3f}, r: {:.3f}, d: {}'.format(
+        #     t, action, x, y, yaw, r, done))
+        print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
+            t, x, y, l_x, g_x, done))
         plt.imshow(obs, cmap='Greys')
         # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
         # origin='lower')
         plt.show(block=False)    # Default is a blocking call
-        plt.pause(.5)
+        plt.pause(.25)
         plt.close()
         if done:
             break
