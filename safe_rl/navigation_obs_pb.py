@@ -21,7 +21,8 @@ class NavigationObsPBEnv(gym.Env):
     def __init__(self, task={},
                         img_H=96,
                         img_W=96,
-                        render=True):
+                        render=True,
+                        doneType='fail'):
         """
         __init__: initialization
 
@@ -34,10 +35,8 @@ class NavigationObsPBEnv(gym.Env):
         super(NavigationObsPBEnv, self).__init__()
 
         # Define dimensions
-        self.action_lim = np.array([0.04])
-        self.state_num = 2
-        self.state_dim = 2
-        self.wall_height = 1
+        self.state_bound = 2.
+        self.wall_height = 1.
         self.wall_thickness = 0.05
         self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
         self.camera_height = 0.2	# cannot be too low, otherwise bad depth
@@ -47,26 +46,32 @@ class NavigationObsPBEnv(gym.Env):
         self.img_W = img_W
         self.observation_space = gym.spaces.Box(low=0., high=1.,
             shape=(img_H, img_W), dtype=np.float32)
+
+        # Car initial x/y/theta
+        self.car_init_state = [0.1, 0., 0.]
+
+        # Car dynamics
+        self.state_dim = 3
+        self.action_dim = 1
+        # TODO: tuning?
+        self.v = 0.2
+        # self.w = [-1.0, 0, 1.0]
+        self.dt = 0.1
         # Discrete action space
         # self.action_space = gym.spaces.Discrete(3)
         # Continuous action space
+        self.action_lim = np.array([1.])
         self.action_space = gym.spaces.Box(-self.action_lim, self.action_lim)
+        self.doneType = doneType
 
-        # Car initial x/y/theta
-        self.car_init_state = [0.1,0,0]
-
-        # Car dynamics - TODO: tuning?
-        self.v = 0.2
-        self.w = [-1.0, 0, 1.0]
-        self.dt = 0.1
-
-        # Extract task info - TODO: specify more
+        # Extract task info
+        # TODO: specify more
         self._task = task
-        self._goal = task.get('goal', [self.state_dim-0.1, 0])
-        self._obs_loc = task.get('obs_loc',[self.state_dim/2, 0])
+        self._goal_loc = task.get('goal_loc', np.array([self.state_bound-0.1, 0.]))
+        self._goal_radius = task.get('goal_radius', 0.05)
+        self._obs_loc  = task.get('obs_loc', np.array([self.state_bound/2, 0]))
         self._obs_radius = task.get('obs_radius', 0.1)
         self._obs_buffer = 0.1 # no cost if outside buffer
-        self._goal_thres = 0.02
 
         # Set up PyBullet parameters
         self._renders = render
@@ -74,6 +79,7 @@ class NavigationObsPBEnv(gym.Env):
 
         # Fix seed
         self.seed(0)
+
 
     def seed(self, seed=None):
         self.seed_val = seed
@@ -86,7 +92,8 @@ class NavigationObsPBEnv(gym.Env):
 
     def reset_task(self, task):
         self._task = task
-        self._goal = task['goal']
+        self._goal_loc = task['goal_loc']
+        self._goal_radius = task['goal_radius']
         self._obs_loc = task['obs_loc']
         self._obs_radius = task['obs_radius']
 
@@ -110,31 +117,31 @@ class NavigationObsPBEnv(gym.Env):
             p.setGravity(0, 0, -9.8)
             if self._renders:
                 p.resetDebugVisualizerCamera(3.0, 180, -89,
-                    [self.state_dim/2, 0, 0])
+                    [self.state_bound/2, 0, 0])
 
             # Load ground, walls
             ground_collision_id = p.createCollisionShape(
                 p.GEOM_BOX,
-                halfExtents=[	self.state_dim/2,
-                                self.state_dim/2,
+                halfExtents=[	self.state_bound/2,
+                                self.state_bound/2,
                                 self.wall_thickness/2])
             self.ground_id = p.createMultiBody(
                 baseMass=0,	# FIXED
                 baseCollisionShapeIndex=ground_collision_id,
-                basePosition=[	self.state_dim/2,
+                basePosition=[	self.state_bound/2,
                                 0,
                                 -self.wall_thickness/2])
             wall_collision_id = p.createCollisionShape(
                 p.GEOM_BOX,
                 halfExtents=[	self.wall_thickness/2,
-                                self.state_dim/2,
+                                self.state_bound/2,
                                 self.wall_height/2])
             wall_visual_id = -1
             if self._renders:
                 wall_visual_id = p.createVisualShape(
                     p.GEOM_BOX,
                     halfExtents=[	self.wall_thickness/2,
-                                    self.state_dim/2,
+                                    self.state_bound/2,
                                     self.wall_height/2])
             self.wall_back_id = p.createMultiBody(
                 baseMass=0,
@@ -147,35 +154,35 @@ class NavigationObsPBEnv(gym.Env):
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
                 baseVisualShapeIndex=wall_visual_id,
-                basePosition=[	self.state_dim/2,
-                                self.state_dim/2+self.wall_thickness/2,
+                basePosition=[	self.state_bound/2,
+                                self.state_bound/2+self.wall_thickness/2,
                                 self.wall_height/2],
                 baseOrientation=p.getQuaternionFromEuler([0,0,np.pi/2]))
             self.wall_right_id = p.createMultiBody(	# negative in y
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
                 baseVisualShapeIndex=wall_visual_id,
-                basePosition=[	self.state_dim/2,
-                                -self.state_dim/2-self.wall_thickness/2,
+                basePosition=[	self.state_bound/2,
+                                -self.state_bound/2-self.wall_thickness/2,
                                 self.wall_height/2],
                 baseOrientation=p.getQuaternionFromEuler([0,0,np.pi/2]))
             self.wall_front_id = p.createMultiBody(
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
                 baseVisualShapeIndex=wall_visual_id,
-                basePosition=[	self.state_dim+self.wall_thickness/2,
+                basePosition=[	self.state_bound+self.wall_thickness/2,
                                 0,
                                 self.wall_height/2])
             wall_top_visual_id = p.createVisualShape(p.GEOM_BOX,
-                halfExtents=[	self.state_dim/2,
-                                self.state_dim/2,
+                halfExtents=[	self.state_bound/2,
+                                self.state_bound/2,
                                 self.wall_thickness/2],
                 rgbaColor=[1,1,1,0.1])
             self.wall_top_id = p.createMultiBody(	# for blocking view
                 baseMass=0,
                 baseCollisionShapeIndex=ground_collision_id,
                 baseVisualShapeIndex=wall_top_visual_id,
-                basePosition=[	self.state_dim/2,
+                basePosition=[	self.state_bound/2,
                                 0,
                                 self.wall_height+self.wall_thickness/2])
 
@@ -194,7 +201,7 @@ class NavigationObsPBEnv(gym.Env):
                 baseMass=0,
                 baseCollisionShapeIndex=obs_collision_id,
                 baseVisualShapeIndex=obs_visual_id,
-                basePosition=self._obs_loc+[self.wall_height/2])
+                basePosition=np.append(self._obs_loc, self.wall_height/2))
 
             # Set up car if visualizing in GUI
             if self._renders:
@@ -257,41 +264,39 @@ class NavigationObsPBEnv(gym.Env):
 
     def step(self, action):
         # Determine turning rate
-        w = self.w[action]
+        # w = self.w[action]
+        w = action
 
-        # Dynamics
-        x,y,theta = self._state
-        x_new = x + self.v*np.cos(theta)*self.dt
-        y_new = y + self.v*np.sin(theta)*self.dt
-        theta_new = theta + w*self.dt
-        self._state = [x_new, y_new, theta_new]
+        #= Dynamics
+        self._state = self.integrate_forward(self._state, w)
+        # x,y,theta = self._state
+        # x_new = x + self.v*np.cos(theta)*self.dt
+        # y_new = y + self.v*np.sin(theta)*self.dt
+        # theta_new = theta + w*self.dt
+        # self._state = [x_new, y_new, theta_new]
 
         # Move car in simulation - not necessary if not visualizing in GUI -
         # since all we need from PyBullet is simulation of the camera and the
         # obstacle field
         if self._renders:
+            x_new, y_new, theta_new = self._state
             self._p.resetBasePositionAndOrientation(self.car_id,
                                 [x_new,y_new,0.03],
                                 self._p.getQuaternionFromEuler([0,0,theta_new]))
 
-        # Reward: goal and obstacle  TODO: tuning?
-        x_goal = x - self._goal[0]
-        y_goal = y - self._goal[1]
-        x_obs = x - self._obs_loc[0]
-        y_obs = y - self._obs_loc[1]
-        l = np.sqrt(x_goal ** 2 + y_goal ** 2)
-        reward_goal = -l
+        #= `l_x` and `g_x` signal
+        l_x = self.target_margin(self._state)
+        g_x = self.safety_margin(self._state)
+        fail = g_x > 0
+        success = l_x <= 0
 
-        dist_to_back_wall = x
-        dist_to_left_wall = self.state_dim/2-y
-        dist_to_right_wall = self.state_dim/2+y
-        dist_to_front_wall = self.state_dim - x
-        dist_to_obs_center = np.sqrt(x_obs ** 2 + y_obs ** 2)
+        #= `reward` signal
+        # TODO: tuning?
+        dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
+        reward_goal = -dist_to_goal_center
+
+        dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
         dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
-        g = min([dist_to_back_wall, dist_to_left_wall, dist_to_right_wall,
-            dist_to_front_wall, dist_to_obs_boundary])
-
-        # print(dist_to_obs_center, self._goal, self._obs_loc, self._obs_radius)
         if dist_to_obs_center < self._obs_radius:
             reward_obs = -1
         elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
@@ -299,9 +304,120 @@ class NavigationObsPBEnv(gym.Env):
         else:
             reward_obs = 0
         reward = reward_goal + reward_obs
-        done = (l < self._goal_thres)
+
+        #= `done` signal
+        if self.doneType == 'end':
+            done = not self.check_within_bounds(self.state)
+        elif self.doneType == 'fail':
+            done = fail
+        elif self.doneType == 'TF':
+            done = fail or success
+        else:
+            raise ValueError("invalid doneType")
+
+        if done and self.doneType == 'fail':
+            g_x = 1  # TODO Tuning
+
         return self._get_obs(), reward, done, {'task': self._task,
-            'state': self._state, 'g': g, 'l': l}
+            'state': self._state, 'g_x': g_x, 'l_x': l_x}
+
+
+    def integrate_forward(self, state, w):
+        """ Integrate the dynamics forward by one step.
+
+        Args:
+            state: x, y, theta.
+            w: angular speed.
+
+        Returns:
+            State variables (x,y,theta) integrated one step forward in time.
+        """
+
+        x, y, theta = state
+        x_new = x + self.v*np.cos(theta)*self.dt
+        y_new = y + self.v*np.sin(theta)*self.dt
+        theta_new = np.mod(theta + w*self.dt, 2*np.pi)
+        state = [x_new, y_new, theta_new]
+
+        return state
+
+
+    #== GETTER ==
+    def check_within_bounds(self, state):
+        if state[0] < -self.state_bound:
+            return False
+        if state[1] < -self.state_bound:
+            return False
+        if state[0] > self.state_bound:
+            return False
+        if state[1] > self.state_bound:
+            return False
+        return True
+
+
+    @staticmethod
+    def _calculate_margin_rect(s, x_y_w_h, negativeInside=True):
+        x, y, w, h = x_y_w_h
+        delta_x = np.abs(s[0] - x)
+        delta_y = np.abs(s[1] - y)
+        margin = max(delta_y - h/2, delta_x - w/2)
+
+        if negativeInside:
+            return margin
+        else:
+            return - margin
+
+
+    @staticmethod
+    def _calculate_margin_circle(s, c_r, negativeInside=True):
+        center, radius = c_r
+        dist_to_center = np.linalg.norm(s[:2] - center)
+        margin = dist_to_center - radius
+
+        if negativeInside:
+            return margin
+        else:
+            return - margin
+
+
+    def target_margin(self, state):
+        """ Computes the margin (e.g. distance) between state and target set.
+
+        Args:
+            state: consisting of [x, y, theta].
+
+        Returns:
+            l(state): target margin, negative value suggests inside of the target set.
+        """
+        s = state[:2]
+        c_r = [self._goal_loc, self._goal_radius]
+        target_margin = self._calculate_margin_circle(s, c_r, negativeInside=True)
+        return target_margin
+
+
+    def safety_margin(self, state):
+        """ Computes the margin (e.g. distance) between state and failue set.
+
+        Args:
+            state: consisting of [x, y, theta].
+
+        Returns:
+            g(state): safety margin, positive value suggests inside of the failure set.
+        """
+        s = state[:2]
+
+        # ? CONFIRM IF THE BOUND IS WITHIN [-1, 1] IN BOTH X-Y
+        x_y_w_h = [0., 0., self.state_bound, self.state_bound]
+        boundary_margin = self._calculate_margin_rect(s, x_y_w_h, negativeInside=True)
+        g_xList = [boundary_margin]
+
+        c_r = [self._obs_loc, self._obs_radius]
+        obs_margin = self._calculate_margin_circle(s, c_r, negativeInside=False)
+        g_xList.append(obs_margin)
+
+        safety_margin = np.max(np.array(g_xList))
+        return safety_margin
+
 
     ################ Not used in episode ################
 
@@ -319,30 +435,35 @@ class NavigationObsPBEnv(gym.Env):
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    import random
 
     # Test single environment in GUI
-    env = NavigationObsPBEnv(render=False)
+    env = NavigationObsPBEnv(render=True)
     obs = env.reset()
+    print("\n== Environment Information ==")
+    print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
+    print("- state bound: {:.2f}, done type: {}".format(env.state_bound, env.doneType))
+    print("- action space:", env.action_space)
     # fig = plt.figure()
     # plt.imshow(obs, cmap='Greys')
     # plt.show()
 
     # Run one trial
-    for t in range(10):
-
+    for t in range(100):
         # Apply random action
-        action = random.randint(0,2)
+        # action = random.randint(0,2)
+        action = env.action_space.sample()[0]
         obs, r, done, info = env.step(action)
         state = info['state']
 
         # Debug
         x, y, yaw = state
-        print('x: {:.3f}, y: {:.3f}, yaw: {:.3f}, reward: {:.3f}, done: {}'.format(
-            x, y, yaw, r, done))
+        print('[{}] a: {:.2f}, x: {:.3f}, y: {:.3f}, yaw: {:.3f}, r: {:.3f}, d: {}'.format(
+            t, action, x, y, yaw, r, done))
         plt.imshow(obs, cmap='Greys')
         # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
         # origin='lower')
         plt.show(block=False)    # Default is a blocking call
-        plt.pause(1)
+        plt.pause(.5)
         plt.close()
+        if done:
+            break
