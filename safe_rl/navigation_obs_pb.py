@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import pybullet as pb
 from pybullet_utils import bullet_client as bc
 import gym
@@ -34,6 +35,7 @@ class NavigationObsPBEnv(gym.Env):
 
         # Define dimensions
         self.action_lim = np.array([0.04])
+        self.state_num = 2
         self.state_dim = 2
         self.wall_height = 1
         self.wall_thickness = 0.05
@@ -71,17 +73,23 @@ class NavigationObsPBEnv(gym.Env):
         self._physics_client_id = -1
 
         # Fix seed
-        self.seed()
+        self.seed(0)
 
     def seed(self, seed=None):
-        self.np_random, seed = gym.utils.seeding.np_random(seed)
-        return [seed]
+        self.seed_val = seed
+        self.action_space.seed(self.seed_val)
+        np.random.seed(self.seed_val)
+        random.seed(self.seed_val)
+        # self.np_random, seed = gym.utils.seeding.np_random(seed)
+        # return [seed]
+
 
     def reset_task(self, task):
         self._task = task
         self._goal = task['goal']
         self._obs_loc = task['obs_loc']
         self._obs_radius = task['obs_radius']
+
 
     def reset(self):
         self._state = np.zeros(self.state_dim, dtype=np.float32)
@@ -314,23 +322,24 @@ if __name__ == '__main__':
     import random
 
     # Test single environment in GUI
-    env = NavigationObsPBEnv(render=True)
+    env = NavigationObsPBEnv(render=False)
     obs = env.reset()
     # fig = plt.figure()
     # plt.imshow(obs, cmap='Greys')
     # plt.show()
 
     # Run one trial
-    for t in range(5):
+    for t in range(10):
 
         # Apply random action
         action = random.randint(0,2)
-        obs, reward, done, info = env.step(action)
+        obs, r, done, info = env.step(action)
         state = info['state']
 
         # Debug
-        print(f'x: {state[0]}, y: {state[1]}, yaw: {state[2]}', end=', ')
-        print('reward: {reward}, done: {done}')
+        x, y, yaw = state
+        print('x: {:.3f}, y: {:.3f}, yaw: {:.3f}, reward: {:.3f}, done: {}'.format(
+            x, y, yaw, r, done))
         plt.imshow(obs, cmap='Greys')
         # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
         # origin='lower')
