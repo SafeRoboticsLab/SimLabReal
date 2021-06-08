@@ -227,10 +227,11 @@ class NavigationObsPBEnv(gym.Env):
                     baseVisualShapeIndex=car_visual_id,
                     basePosition=np.append(self._state[:2], 0.03),
                     baseOrientation=p.getQuaternionFromEuler([0,0,0]))
-
-        p.stepSimulation()
-        # pos, orn = p.getBasePositionAndOrientation(self.car_id)
-        # euler = p.getEulerFromQuaternion(orn)
+            p.stepSimulation()
+        else:
+            self._p.resetBasePositionAndOrientation(self.car_id,
+                np.append(self._state[:2], 0.03),
+                self._p.getQuaternionFromEuler([0,0,self._state[2]]))
         return self._get_obs()
 
 
@@ -481,7 +482,7 @@ if __name__ == '__main__':
     # Run 3 trials
     for i in range(3):
         print('\n== {} =='.format(i))
-        obs = env.reset(random_init=False)
+        obs = env.reset(random_init=True)
         for t in range(100):
             # Apply random action
             # action = random.randint(0,2)
