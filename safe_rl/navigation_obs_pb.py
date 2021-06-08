@@ -479,29 +479,29 @@ if __name__ == '__main__':
     # print(env.safety_margin(np.array([.5, -1.5])))
 
     # Run 3 trials
-    # for i in range(3):
-    #     print('\n== {} =='.format(i))
-    obs = env.reset(random_init=False)
-    for t in range(100):
-        # Apply random action
-        # action = random.randint(0,2)
-        action = env.action_space.sample()[0]
-        obs, r, done, info = env.step(action)
-        state = info['state']
+    for i in range(3):
+        print('\n== {} =='.format(i))
+        obs = env.reset(random_init=False)
+        for t in range(100):
+            # Apply random action
+            # action = random.randint(0,2)
+            action = env.action_space.sample()[0]
+            obs, r, done, info = env.step(action)
+            state = info['state']
 
-        # Debug
-        x, y, yaw = state
-        l_x = info['l_x']
-        g_x = info['g_x']
-        # print('[{}] a: {:.2f}, x: {:.3f}, y: {:.3f}, yaw: {:.3f}, r: {:.3f}, d: {}'.format(
-        #     t, action, x, y, yaw, r, done))
-        print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
-            t, x, y, l_x, g_x, done))
-        plt.imshow(obs, cmap='Greys')
-        # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
-        # origin='lower')
-        plt.show(block=False)    # Default is a blocking call
-        plt.pause(.25)
-        plt.close()
-        if done:
-            break
+            # Debug
+            x, y, yaw = state
+            l_x = info['l_x']
+            g_x = info['g_x']
+            # print('[{}] a: {:.2f}, x: {:.3f}, y: {:.3f}, yaw: {:.3f}, r: {:.3f}, d: {}'.format(
+            #     t, action, x, y, yaw, r, done))
+            print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
+                t, x, y, l_x, g_x, done))
+            plt.imshow(obs, cmap='Greys')
+            # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
+            # origin='lower')
+            plt.show(block=False)    # Default is a blocking call
+            plt.pause(.25)
+            plt.close()
+            if done:
+                break
