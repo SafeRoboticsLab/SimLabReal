@@ -134,12 +134,11 @@ class ConvNet(nn.Module):
                     mlp_dimList=[128, 128, 1],
                     mlp_act='Tanh',
                     mlp_output_act='Tanh',
-                    # num_mlp_output=5,
-                    # out_cnn_dim=64,  # 32 features x 2 (x/y) = 64
                     z_conv_dim=0,
                     z_mlp_dim=0,
                     img_size=128,
-                    ):
+                    verbose=True
+    ):
 
         super(ConvNet, self).__init__()
 
@@ -151,30 +150,23 @@ class ConvNet(nn.Module):
         self.moduleList = nn.ModuleList()
 
         #= CNN: W' = (W - kernel_size + 2*padding) / stride + 1
+        # Nx1x128x128 -> Nx16x128x128 -> Nx32x128x128
+        for i, (kernel_size, out_channels) in enumerate(zip(cnn_kernel_size, 
+                                                            cnn_channel_numbers)):
+            padding = int( (kernel_size-1) / 2)
+            if i == 0:
+                in_channels = input_channel_number + z_conv_dim
+            else:
+                in_channels = cnn_channel_numbers[i-1]
 
-        # Nx1x128x128 -> Nx16x128x128
-        kernel_size = cnn_kernel_size[0]
-        padding = int( (kernel_size-1) / 2)
-        conv_1 = nn.Sequential( OrderedDict([
-            ('conv1', nn.Conv2d(
-                        in_channels=input_channel_number + z_conv_dim,
-                        out_channels=cnn_channel_numbers[0],
-                        kernel_size=kernel_size, stride=1, padding=padding)),
-            ('relu1', nn.ReLU())
-        ]))
-        self.moduleList.append(conv_1)
-
-        # Nx16x128x128 -> Nx32x128x128
-        kernel_size = cnn_kernel_size[1]
-        padding = int( (kernel_size-1) / 2)
-        conv_2 = nn.Sequential( OrderedDict([
-            ('conv1', nn.Conv2d(
-                        in_channels=cnn_channel_numbers[0],
-                        out_channels=cnn_channel_numbers[1],
-                        kernel_size=kernel_size, stride=1, padding=padding)),
-            ('relu1', nn.ReLU())
-        ]))
-        self.moduleList.append(conv_2)
+            module = nn.Sequential( OrderedDict([
+                ('conv1', nn.Conv2d(
+                            in_channels=in_channels,
+                            out_channels=out_channels,
+                            kernel_size=kernel_size, stride=1, padding=padding)),
+                ('activation1', nn.ReLU())
+            ]))
+            self.moduleList.append(module)
 
         #= Spatial softmax, output 64 (32 features x 2d pos)
         sm = SpatialSoftmax(
@@ -191,24 +183,27 @@ class ConvNet(nn.Module):
                 in_features = mlp_dimList[i-1]
 
             module = nn.Sequential()
-            mlp = nn.Linear( in_features, out_features, bias=True)
-            module.add_module("linear_1", mlp)
+            mlp = nn.Linear(in_features, out_features, bias=True)
+            module.add_module("linear1", mlp)
             if i == len(mlp_dimList)-1:
                 actType = mlp_output_act
             else:
                 actType = mlp_act
 
             if actType == 'Sin':
-                module.add_module("activation_1", Sin())
+                module.add_module("activation1", Sin())
             elif actType == 'Tanh':
-                module.add_module("activation_1", nn.Tanh())
+                module.add_module("activation1", nn.Tanh())
             elif actType == 'ReLU':
-                module.add_module("activation_1", nn.ReLU())
+                module.add_module("activation1", nn.ReLU())
             elif actType == 'Identity':
-                module.add_module("activation_1", nn.Identity())
+                module.add_module("activation1", nn.Identity())
             else:
                 raise ValueError('Activation ({:s}) is not allowed!'.format(actType))
             self.moduleList.append(module)
+
+        if verbose:
+            print(self.moduleList)
 
 
     def forward(self, img, zs=None, mlp_append=None):
