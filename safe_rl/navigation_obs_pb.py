@@ -19,8 +19,8 @@ class NavigationObsPBEnv(gym.Env):
         step() stores distance to obstacle boundary (g) and distance to goal (l)
     """
     def __init__(self, task={},
-                        img_H=96,
-                        img_W=96,
+                        img_H=128,
+                        img_W=128,
                         render=True,
                         doneType='fail'):
         """
@@ -49,8 +49,10 @@ class NavigationObsPBEnv(gym.Env):
         # Set up observation and action space for Gym
         self.img_H = img_H
         self.img_W = img_W
-        self.observation_space = gym.spaces.Box(low=0., high=1.,
-            shape=(img_H, img_W), dtype=np.float32)
+        self.observation_space = gym.spaces.Box(
+            low=np.float32(0.), 
+            high=np.float32(1.),
+            shape=(img_H, img_W))
 
         # Car initial x/y/theta
         self.car_init_state = np.array([0.1, 0., 0.])
@@ -65,7 +67,7 @@ class NavigationObsPBEnv(gym.Env):
         # Discrete action space
         # self.action_space = gym.spaces.Discrete(3)
         # Continuous action space
-        self.action_lim = np.array([1.])
+        self.action_lim = np.float32(np.array([1.]))
         self.action_space = gym.spaces.Box(-self.action_lim, self.action_lim)
         self.doneType = doneType
 
@@ -229,9 +231,10 @@ class NavigationObsPBEnv(gym.Env):
                     baseOrientation=p.getQuaternionFromEuler([0,0,0]))
             p.stepSimulation()
         else:
-            self._p.resetBasePositionAndOrientation(self.car_id,
-                np.append(self._state[:2], 0.03),
-                self._p.getQuaternionFromEuler([0,0,self._state[2]]))
+            if self._renders:
+                self._p.resetBasePositionAndOrientation(self.car_id,
+                    np.append(self._state[:2], 0.03),
+                    self._p.getQuaternionFromEuler([0,0,self._state[2]]))
         return self._get_obs()
 
 
@@ -289,7 +292,7 @@ class NavigationObsPBEnv(gym.Env):
         _, _, _, depth, _ = self._p.getCameraImage(self.img_H, self.img_W,
             view_matrix, projection_matrix,
             flags=self._p.ER_NO_SEGMENTATION_MASK)
-        depth = np.reshape(depth, (self.img_H, self.img_W))
+        depth = np.reshape(depth, (1, self.img_H, self.img_W))
         depth = far*near/(far - (far - near)*depth)
         return depth
 
@@ -466,7 +469,9 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     # Test single environment in GUI
-    env = NavigationObsPBEnv(render=True)
+    render=False
+    env = NavigationObsPBEnv(render=render)
+    print(env._renders)
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
     print("- state bound: {:.2f}, done type: {}".format(env.state_bound, env.doneType))
@@ -498,11 +503,12 @@ if __name__ == '__main__':
             #     t, action, x, y, yaw, r, done))
             print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
                 t, x, y, l_x, g_x, done))
-            plt.imshow(obs, cmap='Greys')
-            # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
-            # origin='lower')
-            plt.show(block=False)    # Default is a blocking call
-            plt.pause(.25)
-            plt.close()
+            if render:
+                plt.imshow(obs, cmap='Greys')
+                # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
+                # origin='lower')
+                plt.show(block=False)    # Default is a blocking call
+                plt.pause(.25)
+                plt.close()
             if done:
                 break
