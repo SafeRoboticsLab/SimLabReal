@@ -3,95 +3,18 @@
 
 import torch
 import torch.nn as nn
-from torch.distributions import Normal, Uniform
-import sys
-
-class Sin(nn.Module):
-    """
-    Sin: Wraps element-wise `sin` activation as a nn.Module.
-
-    Shape:
-        - Input: `(N, *)` where `*` means, any number of additional dimensions
-        - Output: `(N, *)`, same shape as the input
-
-    Examples:
-        >>> m = Sin()
-        >>> input = torch.randn(2)
-        >>> output = m(input)
-    """
-    def __init__(self):
-        super().__init__() # init the base class
-
-    def forward(self, input):
-        return torch.sin(input) # simply apply already implemented sin
+from torch.distributions import Normal
+from neuralNetwork import MLP
 
 
-class model(nn.Module):
-    """
-    model: Constructs a fully-connected neural network with flexible depth, width
-        and activation function choices.
-    """
-    def __init__(self, dimList, actType='Tanh', output_activation=nn.Identity, verbose=False):
-        """
-        __init__: Initalizes.
-
-        Args:
-            dimList (int List): the dimension of each layer.
-            actType (str, optional): the type of activation function. Defaults to 'Tanh'.
-                Currently supports 'Sin', 'Tanh' and 'ReLU'.
-            verbose (bool, optional): print info or not. Defaults to False.
-        """
-        super(model, self).__init__()
-
-        # Construct module list: if use `Python List`, the modules are not added to
-        # computation graph. Instead, we should use `nn.ModuleList()`.
-        self.moduleList = nn.ModuleList()
-        numLayer = len(dimList)-1
-        for idx in range(numLayer):
-            i_dim = dimList[idx]
-            o_dim = dimList[idx+1]
-
-            self.moduleList.append(nn.Linear(in_features=i_dim, out_features=o_dim))
-            if idx == numLayer-1: # final linear layer, no act.
-                self.moduleList.append(output_activation())
-            else:
-                if actType == 'Sin':
-                    self.moduleList.append(Sin())
-                elif actType == 'Tanh':
-                    self.moduleList.append(nn.Tanh())
-                elif actType == 'ReLU':
-                    self.moduleList.append(nn.ReLU())
-                else:
-                    raise ValueError('Activation type ({:s}) is not included!'.format(actType))
-                # self.moduleList.append(nn.Dropout(p=.5))
-        if verbose:
-            print(self.moduleList)
-
-        # Initalizes the weight
-        # self._initialize_weights()
-
-
-    def forward(self, x):
-        for m in self.moduleList:
-            x = m(x)
-        return x
-
-
-    # def _initialize_weights(self):
-    #     for m in self.modules():
-    #         if isinstance(m, nn.Linear):
-    #             m.weight.data.normal_(0, 0.1)
-    #             m.bias.data.zero_()
-
-
-# TODO == Twinned Q-Network ==
+#== Critic ==
 class TwinnedQNetwork(nn.Module):
     def __init__(self, dimList, actType='Tanh', device='cpu', verbose=True):
         super(TwinnedQNetwork, self).__init__()
         if verbose:
             print("The neural networks for CRITIC have the architecture as below:")
-        self.Q1 = model(dimList, actType, verbose=verbose).to(device)
-        self.Q2 = model(dimList, actType, verbose=False).to(device)
+        self.Q1 = MLP(dimList, actType, verbose=verbose).to(device)
+        self.Q2 = MLP(dimList, actType, verbose=False).to(device)
 
         if device == torch.device('cuda'):
             self.Q1.cuda()
@@ -105,18 +28,18 @@ class TwinnedQNetwork(nn.Module):
         return q1, q2
 
 
-# TODO == Policy (Actor) Model ==
+#== Policy (Actor) Model ==
 class GaussianPolicy(nn.Module):
     def __init__(self, dimList, actionSpace, actType='Tanh', device='cpu', verbose=True):
         super(GaussianPolicy, self).__init__()
         self.device = device
         if verbose:
             print("The neural network for MEAN has the architecture as below:")
-        self.mean = model(dimList, actType, output_activation=nn.Tanh,
+        self.mean = MLP(dimList, actType, output_activation=nn.Tanh,
             verbose=verbose).to(device)
         if verbose:
             print("The neural network for LOG_STD has the architecture as below:")
-        self.log_std = model(dimList, actType, output_activation=nn.Identity,
+        self.log_std = MLP(dimList, actType, output_activation=nn.Identity,
             verbose=verbose).to(device)
 
         self.actionSpace = actionSpace
@@ -183,7 +106,7 @@ class DeterministicPolicy(nn.Module):
         self.device = device
         if verbose:
             print("The neural network for MEAN has the architecture as below:")
-        self.mean = model(dimList, actType, output_activation=nn.Tanh,
+        self.mean = MLP(dimList, actType, output_activation=nn.Tanh,
             verbose=verbose).to(device)
         # self.noise = Normal(0., noiseStd)
         self.noiseClamp = noiseClamp
@@ -218,90 +141,3 @@ class DeterministicPolicy(nn.Module):
         action_target = torch.clamp(action_target, self.a_min, self.a_max)
 
         return action, action_target
-
-
-#== Scheduler ==
-class _scheduler(object):
-    def __init__(self, last_epoch=-1, verbose=False):
-        self.cnt = last_epoch
-        self.verbose = verbose
-        self.variable = None
-        self.step()
-
-    def step(self):
-        self.cnt += 1
-        value = self.get_value()
-        self.variable = value
-
-    def get_value(self):
-        raise NotImplementedError
-
-    def get_variable(self):
-        return self.variable
-
-
-class StepLR(_scheduler):
-    def __init__(self, initValue, period, decay=0.1, endValue=None, last_epoch=-1, verbose=False):
-        self.initValue = initValue
-        self.period = period
-        self.decay = decay
-        self.endValue = endValue
-        super(StepLR, self).__init__(last_epoch, verbose)
-
-    def get_value(self):
-        if self.cnt == -1:
-            return self.initValue
-
-        numDecay = int(self.cnt/self.period)
-        tmpValue =  self.initValue * (self.decay ** numDecay)
-        if self.endValue is not None and tmpValue <= self.endValue:
-            return self.endValue
-        return tmpValue
-
-
-class StepLRMargin(_scheduler):
-    def __init__(self, initValue, period, goalValue, decay=0.1, endValue=None, last_epoch=-1, verbose=False):
-        self.initValue = initValue
-        self.period = period
-        self.decay = decay
-        self.endValue = endValue
-        self.goalValue = goalValue
-        super(StepLRMargin, self).__init__(last_epoch, verbose)
-
-    def get_value(self):
-        if self.cnt == -1:
-            return self.initValue
-
-        numDecay = int(self.cnt/self.period)
-        tmpValue =  self.goalValue - (self.goalValue-self.initValue) * (self.decay ** numDecay)
-        if self.endValue is not None and tmpValue >= self.endValue:
-            return self.endValue
-        return tmpValue
-
-
-class StepResetLR(_scheduler):
-    def __init__(self, initValue, period, resetPeriod, decay=0.1, endValue=None,
-        last_epoch=-1, verbose=False):
-        self.initValue = initValue
-        self.period = period
-        self.decay = decay
-        self.endValue = endValue
-        self.resetPeriod = resetPeriod
-        super(StepResetLR, self).__init__(last_epoch, verbose)
-
-    def get_value(self):
-        if self.cnt == -1:
-            return self.initValue
-
-        numDecay = int(self.cnt/self.period)
-        tmpValue =  self.initValue * (self.decay ** numDecay)
-        if self.endValue is not None and tmpValue <= self.endValue:
-            return self.endValue
-        return tmpValue
-
-    def step(self):
-        self.cnt += 1
-        value = self.get_value()
-        self.variable = value
-        if (self.cnt+1) % self.resetPeriod == 0:
-            self.cnt = -1

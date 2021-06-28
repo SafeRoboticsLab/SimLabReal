@@ -61,7 +61,8 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import pickle
 
-from .model import StepLR, StepLRMargin, TwinnedQNetwork, StepResetLR
+from .model import TwinnedQNetwork
+from .scheduler import StepLRMargin
 from .ReplayMemory import ReplayMemory
 from .utils import soft_update, save_model
 

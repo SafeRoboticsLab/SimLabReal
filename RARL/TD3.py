@@ -4,10 +4,8 @@
 
 import torch
 import torch.nn as nn
-from torch.nn.functional import mse_loss, smooth_l1_loss
-from torch.nn.utils import clip_grad_norm_
+from torch.nn.functional import mse_loss
 
-from collections import namedtuple
 import numpy as np
 import matplotlib.pyplot as plt
 import os
