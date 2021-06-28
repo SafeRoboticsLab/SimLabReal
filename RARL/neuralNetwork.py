@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from collections import OrderedDict
 
 
 class Sin(nn.Module):
@@ -150,49 +151,64 @@ class ConvNet(nn.Module):
         self.moduleList = nn.ModuleList()
 
         #= CNN: W' = (W - kernel_size + 2*padding) / stride + 1
+
+        # Nx1x128x128 -> Nx16x128x128
         kernel_size = cnn_kernel_size[0]
         padding = int( (kernel_size-1) / 2)
-        self.conv_1 = nn.Sequential(  # Nx1x128x128
-            nn.Conv2d(  in_channels=input_channel_number + z_conv_dim,
+        conv_1 = nn.Sequential( OrderedDict([
+            ('conv1', nn.Conv2d(
+                        in_channels=input_channel_number + z_conv_dim,
                         out_channels=cnn_channel_numbers[0],
-                        kernel_size=kernel_size, stride=1, padding=padding),
-            nn.ReLU(),
-            )    # Nx16x128x128
+                        kernel_size=kernel_size, stride=1, padding=padding)),
+            ('relu1', nn.ReLU())
+        ]))
+        self.moduleList.append(conv_1)
 
+        # Nx16x128x128 -> Nx32x128x128
         kernel_size = cnn_kernel_size[1]
         padding = int( (kernel_size-1) / 2)
-        self.conv_2 = nn.Sequential(
-            nn.Conv2d(  in_channels=cnn_channel_numbers[0],
+        conv_2 = nn.Sequential( OrderedDict([
+            ('conv1', nn.Conv2d(
+                        in_channels=cnn_channel_numbers[0],
                         out_channels=cnn_channel_numbers[1],
-                        kernel_size=kernel_size, stride=1, padding=padding),
-            nn.ReLU(),
-            )    # Nx32x128x128
+                        kernel_size=kernel_size, stride=1, padding=padding)),
+            ('relu1', nn.ReLU())
+        ]))
+        self.moduleList.append(conv_2)
 
         #= Spatial softmax, output 64 (32 features x 2d pos)
-        self.sm = SpatialSoftmax(   height=img_size,
-                                    width=img_size,
-                                    channel=cnn_channel_numbers[1])
+        sm = SpatialSoftmax(
+                height=img_size, width=img_size,
+                channel=cnn_channel_numbers[1])
+        self.moduleList.append(sm)
 
         #= MLP
-        cnn_output_dim = int(cnn_channel_numbers[1] * 2)
-        self.linear_1 = nn.Sequential(
-            nn.Linear(  cnn_output_dim+mlp_append_dim+z_mlp_dim,
-                        mlp_dimList[0],
-                        bias=True),
-            nn.ReLU(),
-            )
+        for i, out_features in enumerate(mlp_dimList):
+            if i == 0:
+                cnn_output_dim = int(cnn_channel_numbers[1] * 2)
+                in_features = cnn_output_dim + mlp_append_dim + z_mlp_dim
+            else:
+                in_features = mlp_dimList[i-1]
 
-        self.linear_2 = nn.Sequential(
-            nn.Linear(  mlp_dimList[0],
-                        mlp_dimList[1],
-                        bias=True),
-            nn.ReLU(),
-            )
+            module = nn.Sequential()
+            mlp = nn.Linear( in_features, out_features, bias=True)
+            module.add_module("linear_1", mlp)
+            if i == len(mlp_dimList)-1:
+                actType = mlp_output_act
+            else:
+                actType = mlp_act
 
-        # Output action
-        self.linear_out = nn.Linear(mlp_dimList[1],
-                                    mlp_dimList[2],
-                                    bias=True)
+            if actType == 'Sin':
+                module.add_module("activation_1", Sin())
+            elif actType == 'Tanh':
+                module.add_module("activation_1", nn.Tanh())
+            elif actType == 'ReLU':
+                module.add_module("activation_1", nn.ReLU())
+            elif actType == 'Identity':
+                module.add_module("activation_1", nn.Identity())
+            else:
+                raise ValueError('Activation ({:s}) is not allowed!'.format(actType))
+            self.moduleList.append(module)
 
 
     def forward(self, img, zs=None, mlp_append=None):
@@ -203,15 +219,19 @@ class ConvNet(nn.Module):
 
         # Attach latent to image
         if self.z_conv_dim > 0:
-            zs_conv = zs[:,:self.z_conv_dim].unsqueeze(-1).unsqueeze(-1).repeat(1, 1, H, W)  # repeat for all pixels, Nx(z_conv_dim)x200x200
+            # repeat for all pixels, Nx(z_conv_dim)x200x200
+            zs_conv = zs[:,:self.z_conv_dim].unsqueeze(-1).unsqueeze(-1).repeat(1, 1, H, W)
             img = torch.cat((img, zs_conv), dim=1)  # along channel
 
         # CNN
-        x = self.conv_1(img)
-        x = self.conv_2(x)
+        # x = self.conv_1(img)
+        # x = self.conv_2(x)
+        for i in range(2):
+            x = self.moduleList[i](x)
 
         # Spatial softmax
-        x = self.sm(x)
+        # x = self.sm(x)
+        x = self.moduleList[2](x)
 
         # MLP, add latent as concat
         if self.z_mlp_dim > 0:
@@ -219,8 +239,10 @@ class ConvNet(nn.Module):
         if mlp_append is not None:
             x = torch.cat((x, mlp_append), dim=1)
 
-        x = self.linear_1(x)
-        x = self.linear_2(x)
-        out = self.linear_out(x)
+        # x = self.linear_1(x)
+        # x = self.linear_2(x)
+        # out = self.linear_out(x)
+        for i in range(3, len(self.moduleList)):
+            x = self.moduleList[i](x)
 
-        return out
+        return x
