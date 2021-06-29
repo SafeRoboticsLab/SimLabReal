@@ -70,28 +70,61 @@ class TD3(ActorCritic):
     def initQ(self, env, warmupIter, outFolder, num_warmup_samples=200,
                 vmin=-1, vmax=1, plotFigure=True, storeFigure=True):
         loss = 0.0
-        lossList = np.empty(warmupIter, dtype=float)
+        lossArray = []
+        # lossList = np.empty(warmupIter, dtype=float)
+        states, value = env.get_warmup_examples(num_warmup_samples)
+        actions = self.genRandomActions(num_warmup_samples)
+        states = torch.FloatTensor(states).to(self.device)
+        value = torch.FloatTensor(value).to(self.device)
+        actions = torch.FloatTensor(actions).to(self.device)
+        heuristic_dataset = Data.TensorDataset(states, actions, value)
+        heuristic_dataloader = Data.DataLoader( heuristic_dataset,
+                                                batch_size=32,
+                                                shuffle=True)
+
+        self.critic.train()
         for ep_tmp in range(warmupIter):
-            states, value = env.get_warmup_examples(num_warmup_samples)
-            actions = self.genRandomActions(num_warmup_samples)
+            i = 0
+            lossList = []
+            for stateTensor, actionTensor, valueTensor in heuristic_dataloader:
+                i += 1
+                q1, q2 = self.critic(stateTensor, actionTensor)
+                q1Loss = mse_loss(input=q1, target=valueTensor, reduction='sum')
+                q2Loss = mse_loss(input=q2, target=valueTensor, reduction='sum')
+                loss = q1Loss + q2Loss
 
-            self.critic.train()
-            value = torch.from_numpy(value).float().to(self.device)
-            stateTensor = torch.from_numpy(states).float().to(self.device)
-            actionTensor = torch.from_numpy(actions).float().to(self.device)
-            q1, q2 = self.critic(stateTensor, actionTensor)
-            q1Loss = mse_loss(input=q1, target=value, reduction='sum')
-            q2Loss = mse_loss(input=q2, target=value, reduction='sum')
-            loss = q1Loss + q2Loss
+                self.criticOptimizer.zero_grad()
+                loss.backward()
+                # clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+                self.criticOptimizer.step()
 
-            self.criticOptimizer.zero_grad()
-            loss.backward()
-            # clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
-            self.criticOptimizer.step()
+                # lossList[ep_tmp] = loss.detach().cpu().numpy()
+                lossList.append(loss.detach().cpu().numpy())
+                print('\rWarmup Q [{:d}-{:d}]. MSE = {:f}'.format(
+                    ep_tmp+1, i, loss.detach()), end='')
+            lossArray.append(lossList)
 
-            lossList[ep_tmp] = loss.detach().cpu().numpy()
-            print('\rWarmup Q [{:d}]. MSE = {:f}'.format(
-                ep_tmp+1, loss.detach()), end='')
+        # for ep_tmp in range(warmupIter):
+        #     states, value = env.get_warmup_examples(num_warmup_samples)
+        #     actions = self.genRandomActions(num_warmup_samples)
+
+        #     self.critic.train()
+        #     value = torch.from_numpy(value).float().to(self.device)
+        #     stateTensor = torch.from_numpy(states).float().to(self.device)
+        #     actionTensor = torch.from_numpy(actions).float().to(self.device)
+        #     q1, q2 = self.critic(stateTensor, actionTensor)
+        #     q1Loss = mse_loss(input=q1, target=value, reduction='sum')
+        #     q2Loss = mse_loss(input=q2, target=value, reduction='sum')
+        #     loss = q1Loss + q2Loss
+
+        #     self.criticOptimizer.zero_grad()
+        #     loss.backward()
+        #     # clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+        #     self.criticOptimizer.step()
+
+        #     lossList[ep_tmp] = loss.detach().cpu().numpy()
+        #     print('\rWarmup Q [{:d}]. MSE = {:f}'.format(
+        #         ep_tmp+1, loss.detach()), end='')
 
         print(" --- Warmup Q Ends")
         if plotFigure or storeFigure:
@@ -111,7 +144,8 @@ class TD3(ActorCritic):
         del self.criticOptimizer
         self.build_optimizer()
 
-        return lossList
+        # return lossList
+        return np.array(lossArray)
 
 
     def update_critic(self, batch):

@@ -285,6 +285,13 @@ class DubinsCarOneContEnv(gym.Env):
                 self.sample_inside_obs, self.sample_inside_tar))
 
 
+    def set_visual_initial_states(self, states, theta=np.pi/2):
+        tmp = []
+        for state in states:
+            tmp.append(np.array([ state[0],  state[1], theta]))
+        self.visual_initial_states = tmp
+
+
 #== Margin Functions ==
     def safety_margin(self, s):
         """ Computes the margin (e.g. distance) between state and failue set.
@@ -547,15 +554,15 @@ class DubinsCarOneContEnv(gym.Env):
         plt.tight_layout()
 
 
-    def plot_formatting(self, ax=None, labels=None):
+    def plot_formatting(self, ax=None, labels=None, fsz=16):
         axStyle = self.get_axes()
         #== Formatting ==
         ax.axis(axStyle[0])
         ax.set_aspect(axStyle[1])  # makes equal aspect ratio
         ax.grid(False)
         if labels is not None:
-            ax.set_xlabel(labels[0], fontsize=52)
-            ax.set_ylabel(labels[1], fontsize=52)
+            ax.set_xlabel(labels[0], fontsize=fsz)
+            ax.set_ylabel(labels[1], fontsize=fsz)
 
         ax.tick_params( axis='both', which='both',  # both x and y axes, both major and minor ticks are affected
                         bottom=False, top=False,    # ticks along the top and bottom edges are off
