@@ -38,8 +38,14 @@ class TD3_image(ActorCritic):
 
 
     def build_critic(self, dimList, actType='Tanh', verbose=True):
-        self.critic = TwinnedQNetwork(dimList, actType, self.device,
-                        verbose=verbose, image=True)
+        self.critic = TwinnedQNetwork(
+                        dimList=dimList, 
+                        actType=actType, 
+                        device=self.device,
+                        verbose=verbose, 
+                        image=True,
+                        actionDim=self.actionDim
+        )
         self.criticTarget = deepcopy(self.critic)
         for p in self.criticTarget.parameters():
             p.requires_grad = False

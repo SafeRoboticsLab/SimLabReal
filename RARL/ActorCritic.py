@@ -120,6 +120,7 @@ class ActorCritic(object):
     def build_network(self, dimLists, actType={'critic':'Tanh', 'actor':'Tanh'},
         verbose=True):
         self.build_critic(dimLists[0], actType['critic'], verbose=verbose)
+        print()
         self.build_actor(dimLists[1], actType['actor'], verbose=verbose)
         self.build_optimizer()
 

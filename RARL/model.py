@@ -4,13 +4,15 @@
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
+import copy
+
 from .neuralNetwork import MLP, ConvNet
 
 
 #== Critic ==
 class TwinnedQNetwork(nn.Module):
     def __init__(self, dimList, actType='Tanh', device='cpu', image=False,
-            verbose=True):
+            actionDim=1, verbose=True):
 
         super(TwinnedQNetwork, self).__init__()
         self.image = image
@@ -18,19 +20,19 @@ class TwinnedQNetwork(nn.Module):
             print("The neural networks for CRITIC have the architecture as below:")
         if image:
             self.Q1 = ConvNet(  mlp_dimList=dimList,
-                                mlp_append_dim=1,
+                                mlp_append_dim=actionDim,
                                 mlp_act=actType,
                                 mlp_output_act='Identity',
                                 verbose=verbose).to(device)
-            self.Q2 = ConvNet(  mlp_dimList=dimList,
-                                mlp_append_dim=1,
-                                mlp_act=actType,
-                                mlp_output_act='Identity',
-                                verbose=False).to(device)
+            # self.Q2 = ConvNet(  mlp_dimList=dimList,
+            #                     mlp_append_dim=actionDim,
+            #                     mlp_act=actType,
+            #                     mlp_output_act='Identity',
+            #                     verbose=False).to(device)
         else:
             self.Q1 = MLP(dimList, actType, verbose=verbose).to(device)
-            self.Q2 = MLP(dimList, actType, verbose=False).to(device)
-
+            # self.Q2 = MLP(dimList, actType, verbose=False).to(device)
+        self.Q2 = copy.deepcopy(self.Q1)
         self.device = device
 
     def forward(self, states, actions):
@@ -124,7 +126,7 @@ class DeterministicPolicy(nn.Module):
         super(DeterministicPolicy, self).__init__()
         self.device = device
         if verbose:
-            print("The neural network for MEAN has the architecture as below:")
+            print("The neural network for ACTOR-MEAN has the architecture as below:")
         if image:
             self.mean = ConvNet(mlp_dimList=dimList,
                                 mlp_act=actType,
