@@ -11,14 +11,16 @@ from .neuralNetwork import MLP, ConvNet
 
 #== Critic ==
 class TwinnedQNetwork(nn.Module):
-    def __init__(self, dimList, kernel_sz, n_channel, actType='Tanh',
-            device='cpu', image=False, actionDim=1, verbose=True):
+    def __init__(self, dimList, actType='Tanh', device='cpu', image=False,
+            actionDim=1, verbose=True, **kwargs):
 
         super(TwinnedQNetwork, self).__init__()
         self.image = image
         if verbose:
             print("The neural networks for CRITIC have the architecture as below:")
         if image:
+            kernel_sz = kwargs.get('kernel_sz')
+            n_channel = kwargs.get('n_channel')
             self.Q1 = ConvNet(  mlp_dimList=dimList,
                                 cnn_kernel_size=kernel_sz,
                                 cnn_channel_numbers=n_channel,
@@ -122,14 +124,16 @@ class GaussianPolicy(nn.Module):
 
 
 class DeterministicPolicy(nn.Module):
-    def __init__(self, dimList, kernel_sz, n_channel, actionSpace, actType='Tanh',
-            device='cpu', noiseStd=0.1, noiseClamp=0.5, image=False, verbose=True):
+    def __init__(self, dimList, actionSpace, actType='Tanh', device='cpu',
+            noiseStd=0.1, noiseClamp=0.5, image=False, verbose=True, **kwargs):
 
         super(DeterministicPolicy, self).__init__()
         self.device = device
         if verbose:
             print("The neural network for ACTOR-MEAN has the architecture as below:")
         if image:
+            kernel_sz = kwargs.get('kernel_sz')
+            n_channel = kwargs.get('n_channel')
             self.mean = ConvNet(mlp_dimList=dimList,
                                 cnn_kernel_size=kernel_sz,
                                 cnn_channel_numbers=n_channel,

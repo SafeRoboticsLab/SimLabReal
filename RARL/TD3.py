@@ -5,6 +5,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.functional import mse_loss
+import torch.utils.data as Data
 
 import numpy as np
 import matplotlib.pyplot as plt
