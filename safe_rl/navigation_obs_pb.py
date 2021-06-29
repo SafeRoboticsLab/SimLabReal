@@ -3,10 +3,14 @@ import random
 import pybullet as pb
 from pybullet_utils import bullet_client as bc
 import gym
+from matplotlib.ticker import LinearLocator
+
 
 import os
 os.sys.path.append(os.path.join(os.getcwd(), '.'))
 from safe_rl.util_geom import euler2rot
+from gym_reachability.gym_reachability.envs.env_utils import plot_arc, plot_circle
+
 
 class NavigationObsPBEnv(gym.Env):
     """Simple 2D navigation with obstacle using PyBullet. No dynamics/collision
@@ -384,6 +388,17 @@ class NavigationObsPBEnv(gym.Env):
 
 
     #== GETTER ==
+    def get_axes(self):
+        """ Gets the bounds for the environment.
+
+        Returns:
+            List containing a list of bounds for each state coordinate and a
+        """
+        aspect_ratio = (self.bounds[0,1]-self.bounds[0,0])/(self.bounds[1,1]-self.bounds[1,0])
+        axes = np.array([self.bounds[0,0], self.bounds[0,1], self.bounds[1,0], self.bounds[1,1]])
+        return [axes, aspect_ratio]
+
+
     def get_warmup_examples(self, num_warmup_samples=100):
         heuristic_v = np.zeros((num_warmup_samples, 1))
         states = np.zeros(shape=(num_warmup_samples,) + self.observation_space.shape)
@@ -471,6 +486,33 @@ class NavigationObsPBEnv(gym.Env):
 
         safety_margin = np.max(np.array(g_xList))
         return safety_margin
+
+
+    #== Plotting ==
+    def plot_target_failure_set(self, ax, c_c='m', c_t='y', lw=3, zorder=0):
+        plot_circle(self._obs_loc, self._obs_radius, ax,
+            c=c_c, lw=lw, zorder=zorder)
+        plot_circle(self._goal_loc, self._goal_radius, ax, c=c_t,
+            lw=lw, zorder=zorder)
+
+
+    def plot_formatting(self, ax=None, labels=None, fsz=20):
+        axStyle = self.get_axes()
+        #== Formatting ==
+        ax.axis(axStyle[0])
+        ax.set_aspect(axStyle[1])  # makes equal aspect ratio
+        ax.grid(False)
+        if labels is not None:
+            ax.set_xlabel(labels[0], fontsize=fsz)
+            ax.set_ylabel(labels[1], fontsize=fsz)
+
+        ax.tick_params( axis='both', which='both',  # both x and y axes, both major and minor ticks are affected
+                        bottom=False, top=False,    # ticks along the top and bottom edges are off
+                        left=False, right=False)    # ticks along the left and right edges are off
+        ax.xaxis.set_major_locator(LinearLocator(5))
+        ax.xaxis.set_major_formatter('{x:.1f}')
+        ax.yaxis.set_major_locator(LinearLocator(5))
+        ax.yaxis.set_major_formatter('{x:.1f}')
 
 
     ################ Not used in episode ################

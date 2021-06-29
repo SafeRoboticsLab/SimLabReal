@@ -22,7 +22,7 @@ from .env_utils import plot_arc, plot_circle
 
 class DubinsCarOneContEnv(gym.Env):
     def __init__(self, device, mode='normal', doneType='toEnd',
-        sample_inside_obs=False, sample_inside_tar=True, seed=0):
+        sample_inside_obs=False, sample_inside_tar=True, show_ra_set=True):
         # State bounds.
         self.bounds = np.array([[-1.1, 1.1],
                                 [-1.1, 1.1],
@@ -41,6 +41,7 @@ class DubinsCarOneContEnv(gym.Env):
         # Constraint set parameters.
         self.constraint_center = np.array([0, 0])
         self.constraint_radius = 1.0
+        self.cons_neg_inside = True
 
         # Target set parameters.
         self.target_center = np.array([0, 0])
@@ -59,14 +60,17 @@ class DubinsCarOneContEnv(gym.Env):
         self.init_car()
 
         # Set random seed.
-        self.set_seed(seed)
+        self.set_seed(0)
 
         # Visualization params 
-        self.visual_initial_states =[   np.array([ .6*self.constraint_radius,  -.5, np.pi/2]),
-                                        np.array([ -.4*self.constraint_radius, -.5, np.pi/2]),
-                                        np.array([ -0.95*self.constraint_radius, 0., np.pi/2]),
-                                        np.array([ self.R_turn, 0.95*(self.constraint_radius-self.R_turn), np.pi/2]),
-                                    ]
+        self.visual_initial_states =[   
+            np.array([ .6*self.constraint_radius,  -.5, np.pi/2]),
+            np.array([ -.4*self.constraint_radius, -.5, np.pi/2]),
+            np.array([ -0.95*self.constraint_radius, 0., np.pi/2]),
+            np.array([ self.R_turn, 0.95*(self.constraint_radius-self.R_turn), np.pi/2])
+        ]
+        self.show_ra_set = show_ra_set
+
         # Cost Params
         self.targetScaling = 1.
         self.safetyScaling = 1.
@@ -82,7 +86,9 @@ class DubinsCarOneContEnv(gym.Env):
 
     def init_car(self):
         self.car.set_bounds(bounds=self.bounds)
-        self.car.set_constraint(center=self.constraint_center, radius=self.constraint_radius)
+        self.car.set_constraint(center=self.constraint_center,
+                                radius=self.constraint_radius,
+                                cons_neg_inside=self.cons_neg_inside)
         self.car.set_target(center=self.target_center, radius=self.target_radius)
         self.car.set_speed(speed=self.speed)
         self.car.set_time_step(time_step=self.time_step)
@@ -202,10 +208,12 @@ class DubinsCarOneContEnv(gym.Env):
         self.action_space = self.car.action_space
 
 
-    def set_constraint(self, center=np.array([0.,0.]), radius=1.):
+    def set_constraint(self, center=np.array([0.,0.]), radius=1., cons_neg_inside=True):
         self.constraint_center = center
         self.constraint_radius = radius
-        self.car.set_constraint(center=center, radius=radius)
+        self.cons_neg_inside = cons_neg_inside
+        self.car.set_constraint(center=center, radius=radius,
+                                cons_neg_inside=cons_neg_inside)
 
 
     def set_target(self, center=np.array([0.,0.]), radius=.4):
@@ -218,6 +226,10 @@ class DubinsCarOneContEnv(gym.Env):
         self.R_turn = R_turn
         self.car.set_radius_rotation(R_turn=R_turn, verbose=verbose)
         self.action_space = self.car.action_space
+
+
+    def set_time_step(self, time_step):
+        self.time_step = time_step
 
 
     def set_speed(self, speed=.5):
@@ -506,7 +518,8 @@ class DubinsCarOneContEnv(gym.Env):
             self.plot_target_failure_set(ax)
 
             #== Plot reach-avoid set ==
-            self.plot_reach_avoid_set(ax, orientation=theta)
+            if self.show_ra_set:
+                self.plot_reach_avoid_set(ax, orientation=theta)
 
             #== Plot V ==
             self.plot_v_values( q_func, policy, ax=ax, fig=fig, theta=theta,

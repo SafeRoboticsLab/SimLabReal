@@ -31,6 +31,7 @@ class DubinsCarDynCont(object):
         # Constraint set parameters.
         self.constraint_center = None
         self.constraint_radius = None
+        self.cons_neg_inside = True
 
         # Target set parameters.
         self.target_center = None
@@ -195,9 +196,10 @@ class DubinsCarDynCont(object):
         self.time_step = time_step
 
 
-    def set_constraint(self, center, radius):
+    def set_constraint(self, center, radius, cons_neg_inside):
         self.constraint_center = center
         self.constraint_radius = radius
+        self.cons_neg_inside = cons_neg_inside
 
 
     def set_target(self, center, radius):
@@ -247,7 +249,7 @@ class DubinsCarDynCont(object):
 
         if self.constraint_center is not None and self.constraint_radius is not None:
             g_x = calculate_margin_circle(s, [self.constraint_center, self.constraint_radius],
-                negativeInside=True)
+                negativeInside=self.cons_neg_inside)
             g_xList.append(g_x)
 
         safety_margin = np.max(np.array(g_xList))
