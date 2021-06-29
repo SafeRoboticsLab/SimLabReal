@@ -4,27 +4,45 @@
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
-from neuralNetwork import MLP
+from .neuralNetwork import MLP, ConvNet
 
 
 #== Critic ==
 class TwinnedQNetwork(nn.Module):
-    def __init__(self, dimList, actType='Tanh', device='cpu', verbose=True):
+    def __init__(self, dimList, actType='Tanh', device='cpu', image=False,
+            verbose=True):
+
         super(TwinnedQNetwork, self).__init__()
+        self.image = image
         if verbose:
             print("The neural networks for CRITIC have the architecture as below:")
-        self.Q1 = MLP(dimList, actType, verbose=verbose).to(device)
-        self.Q2 = MLP(dimList, actType, verbose=False).to(device)
+        if image:
+            self.Q1 = ConvNet(  mlp_dimList=dimList,
+                                mlp_append_dim=1,
+                                mlp_act=actType,
+                                mlp_output_act='Identity',
+                                verbose=verbose).to(device)
+            self.Q2 = ConvNet(  mlp_dimList=dimList,
+                                mlp_append_dim=1,
+                                mlp_act=actType,
+                                mlp_output_act='Identity',
+                                verbose=False).to(device)
+        else:
+            self.Q1 = MLP(dimList, actType, verbose=verbose).to(device)
+            self.Q2 = MLP(dimList, actType, verbose=False).to(device)
 
-        if device == torch.device('cuda'):
-            self.Q1.cuda()
-            self.Q2.cuda()
         self.device = device
 
     def forward(self, states, actions):
-        x = torch.cat([states, actions], dim=-1).to(self.device)
-        q1 = self.Q1(x)
-        q2 = self.Q2(x)
+        if self.image:
+            states = states.to(self.device)
+            actions = actions.to(self.device)
+            q1 = self.Q1(img=states, mlp_append=actions)
+            q2 = self.Q2(img=states, mlp_append=actions)
+        else:
+            x = torch.cat([states, actions], dim=-1).to(self.device)
+            q1 = self.Q1(x)
+            q2 = self.Q2(x)
         return q1, q2
 
 
@@ -101,13 +119,22 @@ class GaussianPolicy(nn.Module):
 
 class DeterministicPolicy(nn.Module):
     def __init__(self, dimList, actionSpace, actType='Tanh', device='cpu',
-        noiseStd=0.1, noiseClamp=0.5, verbose=True):
+        noiseStd=0.1, noiseClamp=0.5, image=False, verbose=True):
+
         super(DeterministicPolicy, self).__init__()
         self.device = device
         if verbose:
             print("The neural network for MEAN has the architecture as below:")
-        self.mean = MLP(dimList, actType, output_activation=nn.Tanh,
-            verbose=verbose).to(device)
+        if image:
+            self.mean = ConvNet(mlp_dimList=dimList,
+                                mlp_act=actType,
+                                mlp_output_act='Tanh',
+                                verbose=verbose).to(device)
+        else:
+            self.mean = MLP(dimList, 
+                            actType, 
+                            output_activation=nn.Tanh,
+                            verbose=verbose).to(device)
         # self.noise = Normal(0., noiseStd)
         self.noiseClamp = noiseClamp
         self.actionSpace = actionSpace

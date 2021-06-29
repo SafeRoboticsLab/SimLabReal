@@ -173,10 +173,12 @@ class ConvNet(nn.Module):
             self.moduleList.append(module)
 
         #= Spatial softmax, output 64 (32 features x 2d pos)
-        sm = SpatialSoftmax(
-                height=img_size, width=img_size,
-                channel=cnn_channel_numbers[1])
-        self.moduleList.append(sm)
+        module = nn.Sequential( OrderedDict([
+                ('softmax', SpatialSoftmax(
+                            height=img_size, width=img_size,
+                            channel=cnn_channel_numbers[1]))
+        ]))
+        self.moduleList.append(module)
 
         #= MLP
         for i, out_features in enumerate(mlp_dimList):

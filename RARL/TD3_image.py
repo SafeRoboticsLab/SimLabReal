@@ -1,6 +1,5 @@
 # Please contact the author(s) of this library if you have any questions.
-# Authors: Vicenc Rubies-Royo (vrubies@berkeley.edu)
-#          Kai-Chieh Hsu ( kaichieh@princeton.edu )
+# Authors: Kai-Chieh Hsu ( kaichieh@princeton.edu )
 
 import torch
 import torch.nn as nn
@@ -11,10 +10,10 @@ import matplotlib.pyplot as plt
 import os
 from copy import deepcopy
 
-from .model import DeterministicPolicy
+from .model import DeterministicPolicy, TwinnedQNetwork
 from .ActorCritic import ActorCritic
 
-class TD3(ActorCritic):
+class TD3_image(ActorCritic):
     def __init__(self, CONFIG, actionSpace, dimLists, terminalType='g', verbose=True):
         """
         __init__: initialization.
@@ -27,7 +26,7 @@ class TD3(ActorCritic):
                 Defaults to ['Tanh', 'Tanh'].
             verbose (bool, optional): print info or not. Defaults to True.
         """
-        super(TD3, self).__init__('TD3', CONFIG, actionSpace)
+        super(TD3_image, self).__init__('TD3', CONFIG, actionSpace)
         self.terminalType = terminalType
 
         #== Build NN for (D)DQN ==
@@ -38,11 +37,19 @@ class TD3(ActorCritic):
         self.build_network(dimLists, self.actType, verbose=verbose)
 
 
+    def build_critic(self, dimList, actType='Tanh', verbose=True):
+        self.critic = TwinnedQNetwork(dimList, actType, self.device,
+                        verbose=verbose, image=True)
+        self.criticTarget = deepcopy(self.critic)
+        for p in self.criticTarget.parameters():
+            p.requires_grad = False
+
+
     def build_actor(self, dimListActor, actType='Tanh', noiseStd=0.2,
         noiseClamp=0.5, verbose=True):
         self.actor = DeterministicPolicy(dimListActor, self.actionSpace,
             actType=actType, noiseStd=noiseStd, noiseClamp=noiseClamp,
-            device=self.device, verbose=verbose)
+            device=self.device, image=True, verbose=verbose)
         self.actorTarget = deepcopy(self.actor)
         for p in self.actorTarget.parameters():
             p.requires_grad = False
@@ -54,7 +61,7 @@ class TD3(ActorCritic):
         while len(self.memory) < self.memory.capacity * ratio:
             cnt += 1
             print('\rWarmup Buffer [{:d}]'.format(cnt), end='')
-            a = self.actionSpace.sample()
+            a = env.action_space.sample()
             # a = self.genRandomActions(1)[0]
             s_, r, done, info = env.step(a)
             s_ = None if done else s_

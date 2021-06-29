@@ -86,6 +86,7 @@ class ActorCritic(object):
 
         #== ENV PARAM ==
         self.actionSpace = actionSpace
+        self.actionDim = self.actionSpace.shape[0]
 
         #== PARAM ==
 
@@ -199,8 +200,8 @@ class ActorCritic(object):
 
         #== EXPERIENCE REPLAY ==
         transitions = self.memory.sample(self.BATCH_SIZE)
-        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for detailed explanation).
-        # This converts batch-array of Transitions to Transition of batch-arrays.
+        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for detail)
+        # This converts batch-array of Transitions to Transition of batch-arrays
         batch = Transition(*zip(*transitions))
 
         loss_q = self.update_critic(batch)
@@ -269,7 +270,7 @@ class ActorCritic(object):
                             torch.from_numpy(s).float().to(self.device))
                         a = a.cpu().numpy()
                 else:
-                    a = env.action_space.sample()
+                    a = self.actionSpace.sample()
                     # a = self.genRandomActions(1)[0]
 
                 # Interact with env
@@ -299,8 +300,9 @@ class ActorCritic(object):
                         print('\nAfter [{:d}] updates:'.format(self.cntUpdate))
                         print('  - gamma={:.6f}, lr={:.1e}.'.format(
                             self.GAMMA, lr))
-                        print('  - success/failure/unfinished ratio: {:.3f}, {:.3f}, {:.3f}'.format(
-                            success, failure, unfinish))
+                        print('  - success/failure/unfinished ratio:', end=' ')
+                        with np.printoptions(formatter={'float': '{: .3f}'.format}):
+                            print(np.array([success, failure, unfinish]))
 
                     if storeModel:
                         if saveBest:
@@ -312,9 +314,11 @@ class ActorCritic(object):
 
                     if plotFigure or storeFigure:
                         if showBool:
-                            env.visualize(self.critic.Q1, actor_sim, vmin=0, boolPlot=True, addBias=addBias)
+                            env.visualize(  self.critic.Q1, actor_sim, vmin=0,
+                                            boolPlot=True, addBias=addBias)
                         else:
-                            env.visualize(self.critic.Q1, actor_sim, vmin=vmin, vmax=vmax, cmap='seismic', addBias=addBias)
+                            env.visualize(  self.critic.Q1, actor_sim, vmin=vmin,
+                                            vmax=vmax, cmap='seismic', addBias=addBias)
 
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
@@ -341,20 +345,6 @@ class ActorCritic(object):
                 if done:
                     break
 
-            # Rollout report
-            # runningCost = runningCost * 0.9 + epCost * 0.1
-            # trainingRecords.append(TrainingRecord(ep, runningCost, epCost, loss_q, loss_pi))
-            # if verbose:
-            #     print('\r{:3.0f}: This episode gets running/episode cost = ({:3.2f}/{:.2f}) and losses = ({:3.2f}/{:.2f}) after {:d} steps.'.format(\
-            #         ep, runningCost, epCost, loss_q, loss_pi, step_num+1), end=' ')
-            #     print('The agent currently updates {:d} times.'.format(self.cntUpdate), end='\t\t')
-
-            # # Check stopping criteria
-            # if runningCostThr != None:
-            #     if runningCost <= runningCostThr:
-            #         print("\n At Updates[{:3.0f}] Solved! Running cost is now {:3.2f}!".format(self.cntUpdate, runningCost))
-            #         env.close()
-            #         break
         endLearning = time.time()
         timeInitBuffer = endInitBuffer - startInitBuffer
         timeInitQ = endInitQ - startInitQ
@@ -375,8 +365,8 @@ class ActorCritic(object):
 
 
     def save(self, step, logs_path):
-        logs_path_critic = os.path.join(logs_path, 'critic/')
-        logs_path_actor = os.path.join(logs_path, 'actor/')
+        logs_path_critic = os.path.join(logs_path, 'critic')
+        logs_path_actor = os.path.join(logs_path, 'actor')
         save_model(self.critic, step, logs_path_critic, 'critic', self.MAX_MODEL)
         save_model(self.actor,  step, logs_path_actor, 'actor',  self.MAX_MODEL)
         if not self.saved:
@@ -386,8 +376,10 @@ class ActorCritic(object):
 
 
     def restore(self, step, logs_path):
-        logs_path_critic = os.path.join(logs_path, 'model/critic/critic-{}.pth'.format(step))
-        logs_path_actor  = os.path.join(logs_path, 'model/actor/actor-{}.pth'.format(step))
+        logs_path_critic = os.path.join(
+            logs_path, 'model', 'critic', 'critic-{}.pth'.format(step))
+        logs_path_actor  = os.path.join(
+            logs_path, 'model', 'actor', 'actor-{}.pth'.format(step))
         self.critic.load_state_dict(
             torch.load(logs_path_critic, map_location=self.device))
         self.critic.to(self.device)
@@ -405,10 +397,13 @@ class ActorCritic(object):
 
 
     def genRandomActions(self, num_actions):
-        UB = self.actionSpace.high
-        LB = self.actionSpace.low
-        dim = UB.shape[0]
-        actions = (UB - LB) * np.random.rand(num_actions, dim) + LB
+        # UB = self.actionSpace.high
+        # LB = self.actionSpace.low
+        # dim = UB.shape[0]
+        # actions = (UB - LB) * np.random.rand(num_actions, dim) + LB
+        actions = np.empty(shape=(num_actions, self.actionDim), dtype=float)
+        for i in range(num_actions):
+            actions[i, :] = self.actionSpace.sample()
         return actions
 
 
@@ -416,13 +411,16 @@ class ActorCritic(object):
         # `non_final_mask` is used for environments that have next state to be None
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.s_)),
             dtype=torch.bool).to(self.device)
-        non_final_state_nxt = torch.FloatTensor([s for s in batch.s_ if s is not None]).to(self.device)
+        non_final_state_nxt = torch.FloatTensor([
+            s for s in batch.s_ if s is not None]).to(self.device)
         state  = torch.FloatTensor(batch.s).to(self.device)
-        action = torch.FloatTensor(batch.a).to(self.device).view(-1, self.actionSpace.shape[0])
+        action = torch.FloatTensor(batch.a).to(self.device).view(-1, self.actionDim)
         reward = torch.FloatTensor(batch.r).to(self.device)
 
-        g_x = torch.FloatTensor([info['g_x'] for info in batch.info]).to(self.device).view(-1)
-        l_x = torch.FloatTensor([info['l_x'] for info in batch.info]).to(self.device).view(-1)
+        g_x = torch.FloatTensor(
+            [info['g_x'] for info in batch.info]).to(self.device).view(-1)
+        l_x = torch.FloatTensor(
+            [info['l_x'] for info in batch.info]).to(self.device).view(-1)
 
         return non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x
     # * OTHERS ENDS
