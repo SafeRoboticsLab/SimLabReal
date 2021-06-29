@@ -146,11 +146,11 @@ class ConvNet(nn.Module):
         self.z_conv_dim = z_conv_dim
         self.z_mlp_dim = z_mlp_dim
         assert len(cnn_kernel_size) == len(cnn_channel_numbers),\
-            'The length of kernel_size list and the length of #channel list don\'t match'
+            'The length of the kernel_size list does not match with the #channel list!'
         self.n_conv_layers = len(cnn_kernel_size)
         self.n_mlp_layers = len(mlp_dimList)
 
-        # Use ModuleList to store 2 conv layers, 1 spatial softmax and [N] MLP layers
+        # Use ModuleList to store [] conv layers, 1 spatial softmax and [] MLP layers
         self.moduleList = nn.ModuleList()
 
         #= CNN: W' = (W - kernel_size + 2*padding) / stride + 1
@@ -232,7 +232,7 @@ class ConvNet(nn.Module):
 
         # Spatial softmax
         # x = self.sm(x)
-        x = self.moduleList[2](x)
+        x = self.moduleList[self.n_conv_layers](x)
 
         # MLP, add latent as concat
         if self.z_mlp_dim > 0:

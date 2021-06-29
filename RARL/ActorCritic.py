@@ -393,7 +393,7 @@ class ActorCritic(object):
             self.actorTarget.load_state_dict(
                 torch.load(logs_path_actor, map_location=self.device))
             self.actorTarget.to(self.device)
-        print('  <= Restore {}' .format(logs_path))
+        print('  <= Restore {}-{}' .format(logs_path, step))
 
 
     def genRandomActions(self, num_actions):
