@@ -15,7 +15,8 @@ from .model import DeterministicPolicy, TwinnedQNetwork
 from .ActorCritic import ActorCritic
 
 class TD3_image(ActorCritic):
-    def __init__(self, CONFIG, actionSpace, dimLists, terminalType='g', verbose=True):
+    def __init__(self, CONFIG, actionSpace, dimLists, kernel_sz, n_channel,
+            terminalType='g', verbose=True):
         """
         __init__: initialization.
 
@@ -35,15 +36,27 @@ class TD3_image(ActorCritic):
         self.dimListCritic = dimLists[0]
         self.dimListActor = dimLists[1]
         self.actType = CONFIG.ACTIVATION
-        self.build_network(dimLists, self.actType, verbose=verbose)
+        self.build_network(dimLists, kernel_sz, n_channel, self.actType, verbose=verbose)
 
 
-    def build_critic(self, dimList, actType='Tanh', verbose=True):
+    def build_network(self, dimLists, kernel_sz, n_channel,
+            actType={'critic':'Tanh', 'actor':'Tanh'}, verbose=True):
+        self.build_critic(dimLists[0], kernel_sz, n_channel, actType['critic'],
+                verbose=verbose)
+        print()
+        self.build_actor(dimLists[1], kernel_sz, n_channel, actType['actor'],
+                verbose=verbose)
+        self.build_optimizer()
+
+
+    def build_critic(self, dimList, kernel_sz, n_channel, actType='Tanh', verbose=True):
         self.critic = TwinnedQNetwork(
-                        dimList=dimList, 
-                        actType=actType, 
+                        dimList=dimList,
+                        kernel_sz=kernel_sz,
+                        n_channel=n_channel,
+                        actType=actType,
                         device=self.device,
-                        verbose=verbose, 
+                        verbose=verbose,
                         image=True,
                         actionDim=self.actionDim
         )
@@ -52,11 +65,19 @@ class TD3_image(ActorCritic):
             p.requires_grad = False
 
 
-    def build_actor(self, dimListActor, actType='Tanh', noiseStd=0.2,
-        noiseClamp=0.5, verbose=True):
-        self.actor = DeterministicPolicy(dimListActor, self.actionSpace,
-            actType=actType, noiseStd=noiseStd, noiseClamp=noiseClamp,
-            device=self.device, image=True, verbose=verbose)
+    def build_actor(self, dimListActor, kernel_sz, n_channel, actType='Tanh',
+            noiseStd=0.2, noiseClamp=0.5, verbose=True):
+        self.actor = DeterministicPolicy(   dimListActor,
+                                            kernel_sz=kernel_sz,
+                                            n_channel=n_channel,
+                                            actionSpace=self.actionSpace,
+                                            actType=actType,
+                                            noiseStd=noiseStd,
+                                            noiseClamp=noiseClamp,
+                                            device=self.device,
+                                            image=True,
+                                            verbose=verbose
+        )
         self.actorTarget = deepcopy(self.actor)
         for p in self.actorTarget.parameters():
             p.requires_grad = False
