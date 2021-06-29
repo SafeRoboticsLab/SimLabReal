@@ -212,20 +212,20 @@ class ConvNet(nn.Module):
             print(self.moduleList)
 
 
-    def forward(self, img, zs=None, mlp_append=None):
+    def forward(self, x, zs=None, mlp_append=None):
 
-        if img.dim() == 3:
-            img = img.unsqueeze(1)  # Nx1xHxW
-        N, _, H, W = img.shape
+        if x.dim() == 3:
+            x = x.unsqueeze(1)  # Nx1xHxW
+        N, _, H, W = x.shape
 
         # Attach latent to image
         if self.z_conv_dim > 0:
             # repeat for all pixels, Nx(z_conv_dim)x200x200
             zs_conv = zs[:,:self.z_conv_dim].unsqueeze(-1).unsqueeze(-1).repeat(1, 1, H, W)
-            img = torch.cat((img, zs_conv), dim=1)  # along channel
+            x = torch.cat((x, zs_conv), dim=1)  # along channel
 
         # CNN
-        # x = self.conv_1(img)
+        # x = self.conv_1(x)
         # x = self.conv_2(x)
         for i in range(self.n_conv_layers):
             x = self.moduleList[i](x)

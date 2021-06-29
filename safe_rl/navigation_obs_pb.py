@@ -45,6 +45,8 @@ class NavigationObsPBEnv(gym.Env):
         self.wall_thickness = 0.05
         self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
         self.camera_height = 0.2	# cannot be too low, otherwise bad depth
+        self.sample_inside_obs=False
+        self.sample_inside_tar=True
 
         # Set up observation and action space for Gym
         self.img_H = img_H
@@ -52,7 +54,7 @@ class NavigationObsPBEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=np.float32(0.), 
             high=np.float32(1.),
-            shape=(img_H, img_W))
+            shape=(1, img_H, img_W))
 
         # Car initial x/y/theta
         self.car_init_state = np.array([0.1, 0., 0.])
@@ -105,16 +107,17 @@ class NavigationObsPBEnv(gym.Env):
         self._obs_radius = task['obs_radius']
 
 
-    def reset(self, random_init=False, sample_inside_obs=False, sample_inside_tar=True):
+    def reset(self, random_init=True):
         if random_init:
-            self._state = self.sample_state(sample_inside_obs, sample_inside_tar)
+            self._state = self.sample_state(self.sample_inside_obs, 
+                                            self.sample_inside_tar)
         else:
             self._state = self.car_init_state
 
         # Start PyBullet session if first time
-        print("----------- reset simulation ---------------")
+        # print("----------- reset simulation ---------------")
         if self._physics_client_id < 0:
-            print("------------ start pybullet ----------------")
+            # print("------------ start pybullet ----------------")
             if self._renders:
                 self._p = bc.BulletClient(connection_mode=pb.GUI)
             else:
@@ -235,7 +238,7 @@ class NavigationObsPBEnv(gym.Env):
                 self._p.resetBasePositionAndOrientation(self.car_id,
                     np.append(self._state[:2], 0.03),
                     self._p.getQuaternionFromEuler([0,0,self._state[2]]))
-        return self._get_obs()
+        return self._get_obs(self._state)
 
 
     def sample_state(self, sample_inside_obs=False, sample_inside_tar=True):
@@ -262,12 +265,12 @@ class NavigationObsPBEnv(gym.Env):
         return np.array([x_rnd, y_rnd, theta_rnd])
 
 
-    def _get_obs(self):
+    def _get_obs(self, state):
         """
         Depth image not normalized right now
         """
         # State
-        x,y,yaw = self._state
+        x, y, yaw = state
         rot_matrix = euler2rot([yaw,0,0])
         rot_matrix = np.array(rot_matrix).reshape(3, 3)
 
@@ -300,6 +303,8 @@ class NavigationObsPBEnv(gym.Env):
     def step(self, action):
         # Determine turning rate
         # w = self.w[action]
+        if not np.isscalar(action):
+            action = action[0]
         w = action
 
         #= Dynamics
@@ -353,7 +358,7 @@ class NavigationObsPBEnv(gym.Env):
         if done and self.doneType == 'fail':
             g_x = 1  # TODO Tuning
 
-        return self._get_obs(), reward, done, {'task': self._task,
+        return self._get_obs(self._state), reward, done, {'task': self._task,
             'state': self._state, 'g_x': g_x, 'l_x': l_x}
 
 
@@ -373,11 +378,27 @@ class NavigationObsPBEnv(gym.Env):
         y_new = y + self.v*np.sin(theta)*self.dt
         theta_new = np.mod(theta + w*self.dt, 2*np.pi)
         state = np.array([x_new, y_new, theta_new])
+        # print(state)
 
         return state
 
 
     #== GETTER ==
+    def get_warmup_examples(self, num_warmup_samples=100):
+        heuristic_v = np.zeros((num_warmup_samples, 1))
+        states = np.zeros(shape=(num_warmup_samples,) + self.observation_space.shape)
+
+        for i in range(num_warmup_samples):
+            _state = self.sample_state(self.sample_inside_obs, 
+                                            self.sample_inside_tar)
+            l_x = self.target_margin(_state)
+            g_x = self.safety_margin(_state)
+            heuristic_v[i,:] = np.maximum(l_x, g_x)
+            states[i] = self._get_obs(_state)
+
+        return states, heuristic_v
+
+
     def check_within_bounds(self, state):
         for dim, bound in enumerate(self.bounds):
             flagLow = state[dim] < bound[0]
@@ -469,7 +490,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     # Test single environment in GUI
-    render=False
+    render=True
     env = NavigationObsPBEnv(render=render)
     print(env._renders)
     print("\n== Environment Information ==")
@@ -504,7 +525,7 @@ if __name__ == '__main__':
             print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
                 t, x, y, l_x, g_x, done))
             if render:
-                plt.imshow(obs, cmap='Greys')
+                plt.imshow(obs[0], cmap='Greys')
                 # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
                 # origin='lower')
                 plt.show(block=False)    # Default is a blocking call

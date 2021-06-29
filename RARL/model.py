@@ -39,8 +39,8 @@ class TwinnedQNetwork(nn.Module):
         if self.image:
             states = states.to(self.device)
             actions = actions.to(self.device)
-            q1 = self.Q1(img=states, mlp_append=actions)
-            q2 = self.Q2(img=states, mlp_append=actions)
+            q1 = self.Q1(x=states, mlp_append=actions)
+            q2 = self.Q2(x=states, mlp_append=actions)
         else:
             x = torch.cat([states, actions], dim=-1).to(self.device)
             q1 = self.Q1(x)

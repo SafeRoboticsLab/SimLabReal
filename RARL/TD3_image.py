@@ -63,19 +63,14 @@ class TD3_image(ActorCritic):
 
     def initBuffer(self, env, ratio=1.):
         cnt = 0
-        s = env.reset()
         while len(self.memory) < self.memory.capacity * ratio:
             cnt += 1
             print('\rWarmup Buffer [{:d}]'.format(cnt), end='')
-            a = env.action_space.sample()
-            # a = self.genRandomActions(1)[0]
+            s = env.reset()
+            a = self.actionSpace.sample()
             s_, r, done, info = env.step(a)
             s_ = None if done else s_
             self.store_transition(s, a, r, s_, info)
-            if done:
-                s = env.reset()
-            else:
-                s = s_
         print(" --- Warmup Buffer Ends")
 
 
