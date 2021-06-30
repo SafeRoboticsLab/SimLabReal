@@ -20,7 +20,7 @@ from .env_utils import plot_arc, plot_circle
 
 class DubinsCarOneEnv(gym.Env):
     def __init__(self, device, mode='normal', doneType='toEnd',
-        sample_inside_obs=False, sample_inside_tar=True):
+        sample_inside_obs=False, sample_inside_tar=True, show_ra_set=True):
         """
         __init__ [summary]
 
@@ -57,6 +57,7 @@ class DubinsCarOneEnv(gym.Env):
         # Constraint set parameters.
         self.constraint_center = np.array([0, 0])
         self.constraint_radius = 1.0
+        self.cons_neg_inside = True
 
         # Target set parameters.
         self.target_center = np.array([0, 0])
@@ -75,12 +76,14 @@ class DubinsCarOneEnv(gym.Env):
         self.init_car()
 
         # Visualization params
+        self.show_ra_set = show_ra_set
         self.visual_initial_states = [   
             np.array([ .6*self.constraint_radius,  -.5, np.pi/2]),
             np.array([ -.4*self.constraint_radius, -.5, np.pi/2]),
             np.array([ -0.95*self.constraint_radius, 0., np.pi/2]),
             np.array([ self.R_turn, 0.95*(self.constraint_radius-self.R_turn), np.pi/2])
         ]
+
         # Cost Params
         self.targetScaling = 1.
         self.safetyScaling = 1.
@@ -98,7 +101,8 @@ class DubinsCarOneEnv(gym.Env):
         init_car
         """
         self.car.set_bounds(bounds=self.bounds)
-        self.car.set_constraint(center=self.constraint_center, radius=self.constraint_radius)
+        self.car.set_constraint(self.constraint_center, self.constraint_radius,
+            self.cons_neg_inside)
         self.car.set_target(center=self.target_center, radius=self.target_radius)
         self.car.set_speed(speed=self.speed)
         self.car.set_time_step(time_step=self.time_step)
@@ -158,7 +162,7 @@ class DubinsCarOneEnv(gym.Env):
         if distance >= 1e-8:
             raise "There is a mismatch between the env state and car state: {:.2e}".format(distance)
 
-        state_nxt, _ = self.car.step(action)
+        state_nxt = self.car.step(action)
         self.state = state_nxt
         l_x = self.target_margin(self.state[:2])
         g_x = self.safety_margin(self.state[:2])
@@ -185,7 +189,7 @@ class DubinsCarOneEnv(gym.Env):
                 elif self.costType == 'dense_ell_g':
                     cost = l_x + g_x
                 elif self.costType == 'sparse':
-                    cost = 0. * self.scaling
+                    cost = 0.
                 elif self.costType == 'max_ell_g':
                     cost = max(l_x, g_x)
                 else:
@@ -203,7 +207,7 @@ class DubinsCarOneEnv(gym.Env):
 
         #= `info`
         if done and self.doneType == 'fail':
-            info = {"g_x": self.penalty*self.scaling, "l_x": l_x}
+            info = {"g_x": self.penalty*self.safetyScaling, "l_x": l_x}
         else:
             info = {"g_x": g_x, "l_x": l_x}
         return np.copy(self.state), cost, done, info
@@ -274,6 +278,11 @@ class DubinsCarOneEnv(gym.Env):
         self.car.set_bounds(bounds)
 
 
+    def set_time_step(self, time_step):
+        self.time_step = time_step
+        self.car.set_time_step(time_step=time_step)
+
+
     def set_speed(self, speed=.5):
         """
         set_speed
@@ -314,7 +323,7 @@ class DubinsCarOneEnv(gym.Env):
         self.car.set_radius_rotation(R_turn=R_turn, verbose=verbose)
 
 
-    def set_constraint(self, center=np.array([0.,0.]), radius=1.):
+    def set_constraint(self, center=np.array([0.,0.]), radius=1., cons_neg_inside=True):
         """
         set_constraint: set the constraint set (complement of failure set).
 
@@ -326,7 +335,8 @@ class DubinsCarOneEnv(gym.Env):
         """
         self.constraint_center = center
         self.constraint_radius = radius
-        self.car.set_constraint(center=center, radius=radius)
+        self.cons_neg_inside = cons_neg_inside
+        self.car.set_constraint(center, radius, cons_neg_inside)
 
 
     def set_target(self, center=np.array([0.,0.]), radius=.4):
@@ -343,6 +353,13 @@ class DubinsCarOneEnv(gym.Env):
         self.car.set_target(center=center, radius=radius)
 
 
+    def set_visual_initial_states(self, states, theta=np.pi/2):
+        tmp = []
+        for state in states:
+            tmp.append(np.array([ state[0],  state[1], theta]))
+        self.visual_initial_states = tmp
+
+
 #== Margin Functions ==
     def safety_margin(self, s):
         """
@@ -355,7 +372,7 @@ class DubinsCarOneEnv(gym.Env):
         Returns:
             float: safetyt margin. Postivive numbers indicate safety violation.
         """
-        return self.car.safety_margin(s[:2])
+        return self.car.safety_margin(s[:2]) * self.safetyScaling
 
 
     def target_margin(self, s):
@@ -369,10 +386,27 @@ class DubinsCarOneEnv(gym.Env):
         Returns:
             float: target margin. Negative numbers indicate reaching the target.
         """
-        return self.car.target_margin(s[:2])
+        l_x = self.car.target_margin(s[:2])
+        if l_x < 0:
+            return l_x * self.targetScaling
+        return l_x
 
 
-#== Getting Functions ==
+#== Getter ==
+    def report(self):
+        print("Dynamic parameters:")
+        print("+ CAR")
+        print("  - cons: {:.1f}, tar: {:.1f}, turn: {:.2f}".format(
+            self.car.constraint_radius, self.car.target_radius, self.car.R_turn))
+        print("  - v: {:.2f}, w: {:.2f}, dt: {:.2f}".format(
+            self.car.speed, self.car.max_turning_rate, self.car.time_step))
+        print("+ ENV")
+        print("  - cons: {:.1f}, tar: {:.1f}, turn: {:.2f}".format(
+            self.constraint_radius, self.target_radius, self.R_turn))
+        print("  - v: {:.2f}, dt: {:.2f}".format(
+            self.speed, self.time_step))
+
+
     def get_warmup_examples(self, num_warmup_samples=100):
         """
         get_warmup_examples: Get the warmup samples.
@@ -661,7 +695,8 @@ class DubinsCarOneEnv(gym.Env):
             self.plot_target_failure_set(ax)
 
             #== Plot reach-avoid set ==
-            self.plot_reach_avoid_set(ax, orientation=theta)
+            if self.show_ra_set:
+                self.plot_reach_avoid_set(ax, orientation=theta)
 
             #== Plot V ==
             self.plot_v_values( q_func, ax=ax, fig=fig, theta=theta,
@@ -674,12 +709,12 @@ class DubinsCarOneEnv(gym.Env):
             if rndTraj:
                 self.plot_trajectories( q_func, T=200, num_rnd_traj=num_rnd_traj, theta=theta,
                                         toEnd=False, keepOutOf=keepOutOf,
-                                        ax=ax, c='y', lw=2, orientation=0)
+                                        ax=ax, c='k', lw=2, orientation=0)
             else:
                 # `visual_initial_states` are specified for theta = pi/2. Thus,
                 # we need to use "orientation = theta-pi/2"
                 self.plot_trajectories( q_func, T=200, states=self.visual_initial_states, toEnd=False,
-                                        ax=ax, c='y', lw=2, orientation=theta-np.pi/2)
+                                        ax=ax, c='k', lw=2, orientation=theta-np.pi/2)
 
             ax.set_xlabel(r'$\theta={:.0f}^\circ$'.format(theta*180/np.pi), fontsize=28)
 
@@ -730,7 +765,7 @@ class DubinsCarOneEnv(gym.Env):
 
 
     def plot_trajectories(  self, q_func, T=100, num_rnd_traj=None, states=None,
-        theta=None, keepOutOf=False, toEnd=False, ax=None, c='y', lw=1.5,
+        theta=None, keepOutOf=False, toEnd=False, ax=None, c='k', lw=1.5,
         orientation=0, zorder=2):
         """
         plot_trajectories: plot trajectories given the agent's Q-network.
@@ -749,7 +784,7 @@ class DubinsCarOneEnv(gym.Env):
             toEnd (bool, optional): simulate the trajectory until the robot crosses
                 the boundary or not. Defaults to False.
             ax (matplotlib.axes.Axes, optional): Defaults to None.
-            c (str, optional): color. Defaults to 'y'.
+            c (str, optional): color. Defaults to 'k'.
             lw (float, optional): linewidth. Defaults to 1.5.
             orientation (float, optional): counter-clockwise angle. Defaults to 0.
             zorder (int, optional): graph layers order. Defaults to 2.

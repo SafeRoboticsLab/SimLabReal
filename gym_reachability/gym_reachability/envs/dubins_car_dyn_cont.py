@@ -112,10 +112,9 @@ class DubinsCarDynCont(object):
             Tuple of (next state, signed distance of current state, whether the
             episode is done, info dictionary).
         """
-        x, y, theta = self.state.copy()
 
-        l_x_cur = self.target_margin(self.state[:2])
-        g_x_cur = self.safety_margin(self.state[:2])
+        # l_x_cur = self.target_margin(self.state[:2])
+        # g_x_cur = self.safety_margin(self.state[:2])
 
         state = self.integrate_forward(self.state, action)
         self.state = state

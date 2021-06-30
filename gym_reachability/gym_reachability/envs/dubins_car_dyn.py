@@ -37,6 +37,7 @@ class DubinsCarDyn(object):
         # Constraint set parameters.
         self.constraint_center = None
         self.constraint_radius = None
+        self.cons_neg_inside = True
 
         # Target set parameters.
         self.target_center = None
@@ -128,28 +129,28 @@ class DubinsCarDyn(object):
             Tuple of (next state, signed distance of current state, whether the
             episode is done, info dictionary).
         """
-        x, y, theta = self.state.copy()
 
-        l_x_cur = self.target_margin(self.state[:2])
-        g_x_cur = self.safety_margin(self.state[:2])
+        # l_x_cur = self.target_margin(self.state[:2])
+        # g_x_cur = self.safety_margin(self.state[:2])
 
         u = self.discrete_controls[action]
         state = self.integrate_forward(self.state, u)
         self.state = state
 
-        # done
-        if self.doneType == 'toEnd':
-            done = not self.check_within_bounds(self.state)
-        else:
-            assert self.doneType == 'TF', 'invalid doneType'
-            fail = g_x_cur > 0
-            success = l_x_cur <= 0
-            done = fail or success
+        # # done
+        # if self.doneType == 'toEnd':
+        #     done = not self.check_within_bounds(self.state)
+        # else:
+        #     assert self.doneType == 'TF', 'invalid doneType'
+        #     fail = g_x_cur > 0
+        #     success = l_x_cur <= 0
+        #     done = fail or success
 
-        if done:
-            self.alive = False
+        # if done:
+        #     self.alive = False
 
-        return np.copy(self.state), done
+        # return np.copy(self.state), done
+        return np.copy(self.state)
 
 
     def integrate_forward(self, state, u):
@@ -247,16 +248,18 @@ class DubinsCarDyn(object):
             print(self.discrete_controls)
 
 
-    def set_constraint(self, center, radius):
+    def set_constraint(self, center, radius, cons_neg_inside):
         """
         set_constraint: set the constraint set (complement of failure set).
 
         Args:
-            center (np.ndarray, optional): center of the constraint set.
-            radius (float, optional): radius of the constraint set.
+            center (np.ndarray): center of the constraint set.
+            radius (float): radius of the constraint set.
+            cons_neg_inside (bool): negative inside the constraint or not
         """
         self.constraint_center = center
         self.constraint_radius = radius
+        self.cons_neg_inside = cons_neg_inside
 
 
     def set_target(self, center, radius):
@@ -309,7 +312,7 @@ class DubinsCarDyn(object):
 
         if self.constraint_center is not None and self.constraint_radius is not None:
             g_x = calculate_margin_circle(s, [self.constraint_center, self.constraint_radius],
-                negativeInside=True)
+                negativeInside=self.cons_neg_inside)
             g_xList.append(g_x)
 
         safety_margin = np.max(np.array(g_xList))

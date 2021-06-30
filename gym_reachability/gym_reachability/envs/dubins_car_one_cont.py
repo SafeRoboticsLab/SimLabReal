@@ -164,7 +164,7 @@ class DubinsCarOneContEnv(gym.Env):
                 elif self.costType == 'dense_ell_g':
                     cost = l_x + g_x
                 elif self.costType == 'sparse':
-                    cost = 0. * self.scaling
+                    cost = 0.
                 elif self.costType == 'max_ell_g':
                     cost = max(l_x, g_x)
                 else:
@@ -230,6 +230,7 @@ class DubinsCarOneContEnv(gym.Env):
 
     def set_time_step(self, time_step):
         self.time_step = time_step
+        self.car.set_time_step(time_step=time_step)
 
 
     def set_speed(self, speed=.5):
