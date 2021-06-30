@@ -39,8 +39,10 @@ parser.add_argument("-mc",  "--memoryCapacity", help="memoryCapacity",
     default=10000,      type=int)
 parser.add_argument("-ut",  "--updateTimes",    help="#hyper-param. steps",
     default=10,         type=int)
+parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
+    default=100,         type=int)
 parser.add_argument("-wi",  "--warmupIter",     help="warmup iteration",
-    default=5000,       type=int)
+    default=200,       type=int)
 parser.add_argument("-cp",  "--checkPeriod",    help="check period",
     default=20000,      type=int)
 parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
@@ -63,22 +65,22 @@ parser.add_argument("-g",   "--gamma",          help="contraction coeff.",
     default=0.99,   type=float)
 
 # car dynamics
-parser.add_argument("-cr",      "--constraintRadius",   help="constraint radius",
-    default=1., type=float)
-parser.add_argument("-tr",      "--targetRadius",       help="target radius",
-    default=.5, type=float)
-parser.add_argument("-turn",    "--turnRadius",         help="turning radius",
-    default=.6, type=float)
-parser.add_argument("-s",       "--speed",              help="speed",
-    default=.5, type=float)
+# parser.add_argument("-cr",      "--constraintRadius",   help="constraint radius",
+#     default=1., type=float)
+# parser.add_argument("-tr",      "--targetRadius",       help="target radius",
+#     default=.5, type=float)
+# parser.add_argument("-turn",    "--turnRadius",         help="turning radius",
+#     default=.6, type=float)
+# parser.add_argument("-s",       "--speed",              help="speed",
+#     default=.5, type=float)
 
 # Lagrange RL
 parser.add_argument("-r",   "--reward",         help="when entering target set",
     default=-1, type=float)
 parser.add_argument("-p",   "--penalty",        help="when entering failure set",
     default=1,  type=float)
-parser.add_argument("-sc",  "--scaling",        help="scaling of ell/g",
-    default=4,  type=float)
+# parser.add_argument("-sc",  "--scaling",        help="scaling of ell/g",
+#     default=4,  type=float)
 
 # file
 parser.add_argument("-st",  "--showTime",       help="show timestr",
@@ -102,7 +104,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
-maxSteps = 100
+maxSteps = args.maxSteps
 storeFigure = args.storeFigure
 plotFigure = args.plotFigure
 
@@ -110,7 +112,7 @@ fn = args.name + '-' + args.doneType
 if args.showTime:
     fn = fn + '-' + timestr
 
-outFolder = os.path.join(args.outFolder, 'car-TD3', fn)
+outFolder = os.path.join(args.outFolder, 'car-TD3', 'pac', fn)
 print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
@@ -118,19 +120,37 @@ os.makedirs(figureFolder, exist_ok=True)
 
 #== Environment ==
 print("\n== Environment Information ==")
-env = gym.make(env_name, device=device, mode='RA', doneType=args.doneType)
+env = gym.make(env_name, device=device, mode='RA', doneType=args.doneType,
+        sample_inside_obs=False, show_ra_set=False)
 
 stateDim = env.state.shape[0]
 actionDim = env.action_space.shape[0]
 print("State Dimension: {:d}, Action Dimension: {:d}".format(
     stateDim, actionDim))
 
-
 #== Setting in this Environment ==
-env.set_speed(speed=args.speed)
-env.set_target(radius=args.targetRadius)
-env.set_constraint(radius=args.constraintRadius)
-env.set_radius_rotation(R_turn=args.turnRadius)
+# env.set_speed(speed=args.speed)
+# env.set_target(radius=args.targetRadius)
+# env.set_constraint(radius=args.constraintRadius)
+# env.set_radius_rotation(R_turn=args.turnRadius)
+
+env.set_speed(0.2)
+env.set_time_step(0.1)
+env.set_radius_rotation(0.2)
+
+state_bound = 2
+bounds = np.array([ [-state_bound/2, state_bound/2],
+                    [-state_bound/2, state_bound/2],
+                    [0, 2*np.pi]])
+env.set_bounds(bounds)
+
+env.set_constraint(np.array([0, 0]), 0.3, cons_neg_inside=False)
+env.set_target(np.array([.8, 0.]), 0.15)
+env.set_costParam(1, -1, 'sparse', targetScaling=10., safetyScaling=1.)
+
+states = [[-0.5, -0.5], [0., -0.5], [.5, -0.5], [0., 0.5]]
+env.set_visual_initial_states(states)
+
 print("Dynamic parameters:")
 print("  CAR")
 print("    Constraint radius: {:.1f}, Target radius: {:.1f}, Turn radius: {:.2f}, Maximum speed: {:.2f}, Maximum angular speed: {:.2f}".format(
@@ -140,10 +160,10 @@ print("    Constraint radius: {:.1f}, Target radius: {:.1f}, Turn radius: {:.2f}
     env.constraint_radius, env.target_radius, env.R_turn, env.speed))
 
 print(env.car.action_space)
-if 2*env.R_turn-env.constraint_radius > env.target_radius:
-    print("Type II Reach-Avoid Set")
-else:
-    print("Type I Reach-Avoid Set")
+# if 2*env.R_turn-env.constraint_radius > env.target_radius:
+#     print("Type II Reach-Avoid Set")
+# else:
+#     print("Type I Reach-Avoid Set")
 
 env.set_seed(args.randomSeed)
 print('env seed:{}, car seed: {}'.format(env.seed_val, env.car.seed_val))
@@ -152,14 +172,17 @@ print('env seed:{}, car seed: {}'.format(env.seed_val, env.car.seed_val))
 #== Get and Plot max{l_x, g_x} ==
 if plotFigure or storeFigure:
     nx, ny = 101, 101
-    theta, thetaPursuer = 0., 0.
+    vmin = -1
+    vmax = 1
+
     v = np.zeros((nx, ny))
     l_x = np.zeros((nx, ny))
     g_x = np.zeros((nx, ny))
     xs = np.linspace(env.bounds[0,0], env.bounds[0,1], nx)
     ys =np.linspace(env.bounds[1,0], env.bounds[1,1], ny)
 
-    it = np.nditer(l_x, flags=['multi_index'])
+    it = np.nditer(v, flags=['multi_index'])
+
     while not it.finished:
         idx = it.multi_index
         x = xs[idx[0]]
@@ -172,17 +195,38 @@ if plotFigure or storeFigure:
         it.iternext()
 
     axStyle = env.get_axes()
-    fig, ax = plt.subplots(1, 1, figsize=(4, 4))
 
-    f = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap="seismic", vmin=-1, vmax=1, zorder=-1)
-    ax.axis(axStyle[0])
-    ax.grid(False)
-    ax.set_aspect(axStyle[1])  # makes equal aspect ratio
-    env.plot_target_failure_set(ax)
-    env.plot_reach_avoid_set(ax, orientation=0)
-    fig.colorbar(f, ax=ax, pad=0.01, fraction=0.1, shrink=.9, ticks=[-1, 0, 1])
-    plt.tight_layout()
+    fig, axes = plt.subplots(1,3, figsize=(12,6), sharey=True)
+
+    ax = axes[0]
+    im = ax.imshow(l_x.T, interpolation='none', extent=axStyle[0],
+        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
+    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
+        ticks=[vmin, 0, vmax])
+    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=12)
+    ax.set_title(r'$\ell(x)$', fontsize=18)
+
+    ax = axes[1]
+    im = ax.imshow(g_x.T, interpolation='none', extent=axStyle[0],
+        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
+    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
+        ticks=[vmin, 0, vmax])
+    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=12)
+    ax.set_title(r'$g(x)$', fontsize=18)
+
+    ax = axes[2]
+    im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
+        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
+    # env.plot_reach_avoid_set(ax)
+    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
+        ticks=[vmin, 0, vmax])
+    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=12)
+    ax.set_title(r'$v(x)$', fontsize=18)
+
+    for ax in axes:
+        env.plot_target_failure_set(ax=ax)
+        env.plot_formatting(ax=ax)
+    fig.tight_layout()
 
     if storeFigure:
         figurePath = os.path.join(figureFolder, 'env.png')
@@ -242,14 +286,16 @@ print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 print("Actor is using cuda: ", next(agent.actor.parameters()).is_cuda)
 
 if args.warmup:
-    lossList = agent.initQ(env, args.warmupIter, outFolder,
-        num_warmup_samples=200, vmin=vmin, vmax=vmax,
+    lossArray = agent.initQ(env, args.warmupIter, outFolder,
+        num_warmup_samples=2048, vmin=vmin, vmax=vmax,
         plotFigure=plotFigure, storeFigure=storeFigure)
+    lossList = lossArray.reshape(-1)
 
     if plotFigure or storeFigure:
         fig, ax = plt.subplots(1,1, figsize=(4, 4))
 
-        ax.plot(lossList, 'b-')
+        tmp = np.arange(500, lossList.shape[0])
+        ax.plot(tmp, lossList[tmp], 'b-')
         ax.set_xlabel('Iteration', fontsize=18)
         ax.set_ylabel('Loss', fontsize=18)
         plt.tight_layout()

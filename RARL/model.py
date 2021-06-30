@@ -146,14 +146,16 @@ class DeterministicPolicy(nn.Module):
                             output_activation=nn.Tanh,
                             verbose=verbose).to(device)
         # self.noise = Normal(0., noiseStd)
-        self.noiseClamp = noiseClamp
         self.actionSpace = actionSpace
-        self.noiseStd = noiseStd
-
         self.a_max = self.actionSpace.high[0]
         self.a_min = self.actionSpace.low[0]
         self.scale = (self.a_max - self.a_min) / 2.0
         self.bias = (self.a_max + self.a_min) / 2.0
+        self.noiseStd = self.scale * 0.4
+        self.noiseClamp = self.noiseStd * 2
+        if verbose:
+            print('noise-std: {:.2f}, noise-clamp: {:.2f}'.format(
+                self.noiseStd, self.noiseClamp))
 
 
     def forward(self, state):

@@ -290,7 +290,7 @@ class ActorCritic(object):
                     # if self.actorType == 'SAC':
                     #     actor_sim = lambda x: self.actor.sample(x,deterministic=True)
                     results= env.simulate_trajectories(actor_sim,
-                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj,
+                        T=500, num_rnd_traj=numRndTraj,
                         keepOutOf=False, toEnd=False)[1]
                     success  = np.sum(results==1) / results.shape[0]
                     failure  = np.sum(results==-1)/ results.shape[0]

@@ -302,7 +302,7 @@ class DubinsCarOneContEnv(gym.Env):
         Returns:
             Margin for the state s.
         """
-        return self.car.safety_margin(s[:2])
+        return self.car.safety_margin(s[:2]) * self.safetyScaling
 
 
     def target_margin(self, s):
@@ -314,11 +314,14 @@ class DubinsCarOneContEnv(gym.Env):
         Returns:
             Margin for the state s.
         """
-        return self.car.target_margin(s[:2])
+        l_x = self.car.target_margin(s[:2])
+        if l_x < 0:
+            return l_x * self.targetScaling
+        return l_x
 
 
 #== Getting Functions ==
-    def get_warmup_examples(self, num_warmup_samples=100):
+    def get_warmup_examples(self, num_warmup_samples=100, use_max=False):
         # rv = np.random.uniform( low=self.low,
         #                         high=self.high,
         #                         size=(num_warmup_samples,3))
@@ -334,7 +337,10 @@ class DubinsCarOneContEnv(gym.Env):
             # x, y, theta = x_rnd[i], y_rnd[i], theta_rnd[i]
             l_x = self.target_margin(np.array([x, y]))
             g_x = self.safety_margin(np.array([x, y]))
-            heuristic_v[i,:] = np.maximum(l_x, g_x)
+            if use_max:
+                heuristic_v[i,:] = np.maximum(l_x, g_x)
+            else:
+                heuristic_v[i,:] = g_x
             states[i, :] = x, y, theta
 
         return states, heuristic_v
@@ -537,7 +543,7 @@ class DubinsCarOneContEnv(gym.Env):
 
             #== Plot Trajectories ==
             if rndTraj:
-                self.plot_trajectories(policy, T=200, num_rnd_traj=num_rnd_traj,
+                self.plot_trajectories(policy, T=400, num_rnd_traj=num_rnd_traj,
                     theta=theta, toEnd=False,
                     sample_inside_obs=sample_inside_obs,
                     sample_inside_tar=sample_inside_tar,
@@ -545,7 +551,7 @@ class DubinsCarOneContEnv(gym.Env):
             else:
                 # `visual_initial_states` are specified for theta = pi/2. Thus,
                 # we need to use "orientation = theta-pi/2"
-                self.plot_trajectories(policy, T=200,
+                self.plot_trajectories(policy, T=400,
                     states=self.visual_initial_states, toEnd=False, 
                     ax=ax, c='k', lw=2, orientation=theta-np.pi/2)
             theta = theta*180/np.pi
