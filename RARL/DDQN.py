@@ -9,7 +9,7 @@ from collections import namedtuple
 import os
 import pickle
 
-from .model import StepLRMargin, StepResetLR
+from .scheduler import StepLRMargin, StepResetLR
 from .ReplayMemory import ReplayMemory
 from .utils import soft_update, save_model
 

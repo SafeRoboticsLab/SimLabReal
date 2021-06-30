@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import os
 import time
 
-from .model import model
+from .neuralNetwork import MLP
 from .DDQN import DDQN, Transition
 
 class DDQNSingle(DDQN):
@@ -60,8 +60,8 @@ class DDQNSingle(DDQN):
             actType (str, optional): activation function. Defaults to 'Tanh'.
             verbose (bool, optional): print or not. Defaults to True.
         """
-        self.Q_network = model(dimList, actType, verbose=verbose)
-        self.target_network = model(dimList, actType)
+        self.Q_network = MLP(dimList, actType, verbose=verbose)
+        self.target_network = MLP(dimList, actType)
 
         if self.device == torch.device('cuda'):
             self.Q_network.cuda()
