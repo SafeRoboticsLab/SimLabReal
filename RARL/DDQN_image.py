@@ -262,6 +262,10 @@ class DDQN_image(DDQN):
         self.target_network.load_state_dict(self.Q_network.state_dict()) # hard replace
         self.build_optimizer()
 
+        modelFolder = os.path.join(outFolder, 'model')
+        os.makedirs(modelFolder, exist_ok=True)
+        self.save('init', modelFolder)
+
         print(" --- Warmup Q Ends")
         if plotFigure or storeFigure:
             self.Q_network.eval()
@@ -276,7 +280,7 @@ class DDQN_image(DDQN):
                 plt.pause(0.001)
                 plt.close()
 
-        return lossList
+        return np.array(lossArray)
 
 
     def learn(  self, env, MAX_UPDATES=2000000, MAX_EP_STEPS=100,
