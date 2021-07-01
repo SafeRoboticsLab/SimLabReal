@@ -407,12 +407,12 @@ class NavigationObsPBEnv(gym.Env):
         _, _, rgbImg, depth, _ = self._p.getCameraImage(self.img_H, self.img_W,
             view_matrix, projection_matrix,
             flags=self._p.ER_NO_SEGMENTATION_MASK)
-        # depth = np.reshape(depth, (1, self.img_H, self.img_W))
-        # depth = far*near/(far - (far - near)*depth)
-        # return depth
+        depth = np.reshape(depth, (1, self.img_H, self.img_W))
+        depth = far*near/(far - (far - near)*depth)
+        return depth
 
         # return rgba2rgb(rgbImg)/255
-        return rgbImg/255
+        # return rgbImg/255
 
 
     #== GETTER ==
