@@ -241,6 +241,7 @@ class DDQN_image(DDQN):
                                                 batch_size=32,
                                                 shuffle=True)
         self.Q_network.train()
+        startInitQ = time.time()
         for ep_tmp in range(warmupIter):
             i = 0
             lossList = []
@@ -259,14 +260,16 @@ class DDQN_image(DDQN):
                 print('\rWarmup Q [{:d}-{:d}]. MSE = {:f}'.format(
                     ep_tmp+1, i, loss.detach()), end='')
             lossArray.append(lossList)
+        endInitQ = time.time()
+        timeInitQ = endInitQ - startInitQ
+        print(" --- Warmup Q Ends after {:.1f} seconds".format(timeInitQ))
+
         self.target_network.load_state_dict(self.Q_network.state_dict()) # hard replace
         self.build_optimizer()
-
         modelFolder = os.path.join(outFolder, 'model')
         os.makedirs(modelFolder, exist_ok=True)
         self.save('init', modelFolder)
 
-        print(" --- Warmup Q Ends")
         if plotFigure or storeFigure:
             self.Q_network.eval()
             env.visualize(self.Q_network, vmin=vmin, vmax=vmax, cmap='seismic')
