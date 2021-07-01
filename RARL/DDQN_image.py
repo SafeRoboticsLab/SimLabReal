@@ -77,11 +77,8 @@ class DDQN_image(DDQN):
                                     mlp_output_act='Identity',
                                     img_size=img_sz,
                                     verbose=verbose)
+        self.Q_network.to(self.device)
         self.target_network = copy.deepcopy(self.Q_network)
-
-        if self.device == torch.device('cuda'):
-            self.Q_network.cuda()
-            self.target_network.cuda()
 
         self.build_optimizer()
 
