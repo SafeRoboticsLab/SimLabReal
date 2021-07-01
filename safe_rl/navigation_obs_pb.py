@@ -412,7 +412,7 @@ class NavigationObsPBEnv(gym.Env):
         # return depth
 
         # return rgba2rgb(rgbImg)/255
-        return rgbImg
+        return rgbImg/255
 
 
     #== GETTER ==
