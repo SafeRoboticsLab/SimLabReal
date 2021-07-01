@@ -206,10 +206,6 @@ class DDQN_image(DDQN):
             s_, r, done, info = env.step(a_idx)
             s_ = None if done else s_
             self.store_transition(s, a, r, s_, info)
-            if done:
-                s = env.reset()
-            else:
-                s = s_
         print(" --- Warmup Buffer Ends")
 
 
