@@ -61,7 +61,7 @@ class NavigationObsPBEnv(gym.Env):
             shape=(1, img_H, img_W))
 
         # Car initial x/y/theta
-        self.car_init_state = np.array([0.1, 0., 0.])
+        self.car_init_state = np.array([1.5, 0., 0.])
 
         # Car dynamics
         self.state_dim = 3
@@ -212,6 +212,22 @@ class NavigationObsPBEnv(gym.Env):
                 baseCollisionShapeIndex=obs_collision_id,
                 baseVisualShapeIndex=obs_visual_id,
                 basePosition=np.append(self._obs_loc, self.wall_height/2))
+
+            # target
+            goal_collision_id = p.createCollisionShape(
+                p.GEOM_SPHERE,
+                radius=self._goal_radius)
+            goal_visual_id = -1
+            if self._renders:
+                goal_visual_id = p.createVisualShape(
+                    shapeType = p.GEOM_SPHERE,
+                    radius=self._goal_radius,
+                    rgbaColor=[0, 1, 0, 1])
+            self.goal_id = p.createMultiBody(
+                baseMass=0,
+                baseCollisionShapeIndex=goal_collision_id,
+                baseVisualShapeIndex=goal_visual_id,
+                basePosition=np.append(self._goal_loc, 0))
 
             # Set up car if visualizing in GUI
             if self._renders:

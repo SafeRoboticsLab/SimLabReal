@@ -56,7 +56,7 @@ if __name__ == '__main__':
 
     # Test single environment in GUI
     render=True
-    env = NavigationObsPBEnvDisc(render=render)
+    env = NavigationObsPBEnvDisc(render=render, doneType='end')
     print(env._renders)
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
@@ -64,9 +64,12 @@ if __name__ == '__main__':
     print("- action space:", env.action_space)
 
     # Run 3 trials
-    for i in range(3):
+    for i in range(2):
         print('\n== {} =='.format(i))
-        obs = env.reset(random_init=True)
+        if i == 0:
+            obs = env.reset(random_init=False)
+        else:
+            obs = env.reset(random_init=True)
         for t in range(100):
             # Apply random action
             action = env.action_space.sample()
@@ -80,7 +83,7 @@ if __name__ == '__main__':
             print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
                 t, x, y, l_x, g_x, done))
             if render:
-                plt.imshow(obs[0], cmap='Greys', origin='lower')
+                plt.imshow(obs[0], cmap='Greys')
                 plt.show(block=False)    # Default is a blocking call
                 plt.pause(.5)
                 plt.close()
