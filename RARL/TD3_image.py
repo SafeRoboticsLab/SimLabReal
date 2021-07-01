@@ -65,7 +65,7 @@ class TD3_image(ActorCritic):
                         verbose=verbose,
                         image=True,
                         actionDim=self.actionDim
-        )
+        ).to(self.device)
         self.criticTarget = deepcopy(self.critic)
         for p in self.criticTarget.parameters():
             p.requires_grad = False
@@ -84,7 +84,7 @@ class TD3_image(ActorCritic):
                                             device=self.device,
                                             image=True,
                                             verbose=verbose
-        )
+        ).to(self.device)
         self.actorTarget = deepcopy(self.actor)
         for p in self.actorTarget.parameters():
             p.requires_grad = False
