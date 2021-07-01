@@ -126,9 +126,9 @@ if args.doneType == 'toEnd':
     sample_inside_obs=True
 elif args.doneType == 'TF' or args.doneType == 'fail':
     sample_inside_obs=False
-
+show_ra_set=False
 env = gym.make(env_name, device=device, mode=args.mode, doneType=args.doneType,
-    sample_inside_obs=sample_inside_obs, show_ra_set=False)
+    sample_inside_obs=sample_inside_obs, show_ra_set=show_ra_set)
 
 stateDim = env.state.shape[0]
 actionNum = env.action_space.n
@@ -206,7 +206,8 @@ if args.plotFigure or args.storeFigure:
     ax = axes[2]
     im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
         origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
-    # env.plot_reach_avoid_set(ax)
+    if show_ra_set:
+        env.plot_reach_avoid_set(ax)
     cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
         ticks=[vmin, 0, vmax])
     cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=24)
@@ -387,7 +388,8 @@ if args.plotFigure or args.storeFigure:
 
     for ax in axes:
         env.plot_target_failure_set(ax=ax)
-        env.plot_reach_avoid_set(ax=ax)
+        if show_ra_set:
+            env.plot_reach_avoid_set(ax=ax)
         env.plot_formatting(ax=ax)
 
     fig.tight_layout()

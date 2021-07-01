@@ -227,7 +227,7 @@ class NavigationObsPBEnv(gym.Env):
                 baseMass=0,
                 baseCollisionShapeIndex=goal_collision_id,
                 baseVisualShapeIndex=goal_visual_id,
-                basePosition=np.append(self._goal_loc, 0))
+                basePosition=np.append(self._goal_loc, self._goal_radius))
 
             # Set up car if visualizing in GUI
             if self._renders:

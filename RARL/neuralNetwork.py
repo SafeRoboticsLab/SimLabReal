@@ -127,10 +127,10 @@ class SpatialSoftmax(torch.nn.Module):
 
 class ConvNet(nn.Module):
     def __init__(   self,
-                    input_channel_number=1, # not counting z_conv
+                    input_n_channel=1, # not counting z_conv
                     mlp_append_dim=0,       # not counting z_mlp
                     cnn_kernel_size=[5, 3],
-                    cnn_channel_numbers=[16, 32],
+                    output_n_channel=[16, 32],
                     mlp_dimList=[128, 128, 1],
                     mlp_act='Tanh',
                     mlp_output_act='Tanh',
@@ -145,7 +145,7 @@ class ConvNet(nn.Module):
         self.mlp_append_dim = mlp_append_dim
         self.z_conv_dim = z_conv_dim
         self.z_mlp_dim = z_mlp_dim
-        assert len(cnn_kernel_size) == len(cnn_channel_numbers),\
+        assert len(cnn_kernel_size) == len(output_n_channel),\
             'The length of the kernel_size list does not match with the #channel list!'
         self.n_conv_layers = len(cnn_kernel_size)
         self.n_mlp_layers = len(mlp_dimList)
@@ -156,12 +156,12 @@ class ConvNet(nn.Module):
         #= CNN: W' = (W - kernel_size + 2*padding) / stride + 1
         # Nx1x128x128 -> Nx16x128x128 -> Nx32x128x128
         for i, (kernel_size, out_channels) in enumerate(zip(cnn_kernel_size, 
-                                                            cnn_channel_numbers)):
+                                                            output_n_channel)):
             padding = int( (kernel_size-1) / 2)
             if i == 0:
-                in_channels = input_channel_number + z_conv_dim
+                in_channels = input_n_channel + z_conv_dim
             else:
-                in_channels = cnn_channel_numbers[i-1]
+                in_channels = output_n_channel[i-1]
 
             module = nn.Sequential( OrderedDict([
                 ('conv1', nn.Conv2d(
@@ -181,14 +181,14 @@ class ConvNet(nn.Module):
         module = nn.Sequential( OrderedDict([
                 ('softmax', SpatialSoftmax(
                             height=height, width=width,
-                            channel=cnn_channel_numbers[1]))
+                            channel=output_n_channel[-1]))
         ]))
         self.moduleList.append(module)
 
         #= MLP
         for i, out_features in enumerate(mlp_dimList):
             if i == 0:
-                cnn_output_dim = int(cnn_channel_numbers[1] * 2)
+                cnn_output_dim = int(output_n_channel[-1] * 2)
                 in_features = cnn_output_dim + mlp_append_dim + z_mlp_dim
             else:
                 in_features = mlp_dimList[i-1]

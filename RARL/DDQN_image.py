@@ -23,7 +23,7 @@ from .DDQN import DDQN, Transition
 
 class DDQN_image(DDQN):
     def __init__(self, CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
-        mode='RA', terminalType='g', verbose=True):
+            mode='RA', terminalType='g', verbose=True):
         """
         __init__
 
@@ -66,13 +66,15 @@ class DDQN_image(DDQN):
             dimList (np.ndarray): dimensions of each linear layer.
             img_sz (np.ndarray): image size of input.
             kernel_sz (np.ndarray): kernel size of each conv layer.
-            n_channel (np.ndarray): number oof output channels of each conv layer.
+            n_channel (np.ndarray): the first element is the input n_channel and the
+                rest is the number of output channels of each conv layer.
             actType (str, optional): activation function. Defaults to 'Tanh'.
             verbose (bool, optional): print or not. Defaults to True.
         """
         self.Q_network = ConvNet(   mlp_dimList=dimList,
                                     cnn_kernel_size=kernel_sz,
-                                    cnn_channel_numbers=n_channel,
+                                    input_n_channel=n_channel[0],
+                                    output_n_channel=n_channel[1:],
                                     mlp_act=actType,
                                     mlp_output_act='Identity',
                                     img_size=img_sz,
