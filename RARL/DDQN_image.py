@@ -483,7 +483,7 @@ class DDQN_image(DDQN):
         """
         self.Q_network.eval()
         # tensor.min() returns (value, indices), which are in tensor form
-        state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         if (np.random.rand() < self.EPSILON) and explore:
             action_index = np.random.randint(0, self.actionNum)
         else:
