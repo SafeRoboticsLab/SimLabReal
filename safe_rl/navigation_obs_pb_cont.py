@@ -11,7 +11,7 @@ os.sys.path.append(os.path.join(os.getcwd(), '.'))
 from safe_rl.navigation_obs_pb import NavigationObsPBEnv
 
 
-class NavigationObsPBEnvConv(NavigationObsPBEnv):
+class NavigationObsPBEnvCont(NavigationObsPBEnv):
     def __init__(self, task={},
                         img_H=128,
                         img_W=128,
@@ -26,7 +26,7 @@ class NavigationObsPBEnvConv(NavigationObsPBEnv):
             img_W (int, optional): width of the observation.. Defaults to 96.
             render (bool, optional): use pb.GUI if True. Defaults to True.
         """
-        super(NavigationObsPBEnvConv, self).__init__(   task=task,
+        super(NavigationObsPBEnvCont, self).__init__(   task=task,
                                                         img_H=img_H,
                                                         img_W=img_W,
                                                         render=render,
@@ -52,7 +52,7 @@ if __name__ == '__main__':
 
     # Test single environment in GUI
     render=True
-    env = NavigationObsPBEnvConv(render=render)
+    env = NavigationObsPBEnvCont(render=render)
     print(env._renders)
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))

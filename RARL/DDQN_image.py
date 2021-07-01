@@ -15,53 +15,63 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import time
+import copy
 
-from .neuralNetwork import MLP
+from .neuralNetwork import ConvNet
 from .DDQN import DDQN, Transition
 
-class DDQNSingle(DDQN):
-    def __init__(self, CONFIG, numAction, actionList, dimList,
+class DDQN_image(DDQN):
+    def __init__(self, CONFIG, actionSet, dimList, kernel_sz, n_channel,
         mode='RA', terminalType='g', verbose=True):
         """
         __init__
 
         Args:
             CONFIG (object): configuration.
-            numAction (int): #actions.
-            actionList (list): action set.
-            dimList (np.ndarray): dimensions of each layer in the NN.
+            actionSet (list): action set.
+            dimList (np.ndarray): dimensions of each linear layer.
+            kernel_sz (np.ndarray): kernel size of each conv layer.
+            n_channel (np.ndarray): number oof output channels of each conv layer.
             mode (str, optional): the learning mode. Defaults to 'RA'.
             terminalType (str, optional): terminal value. Defaults to 'g'.
             verbose (bool, optional): print or not. Defaults to True.
         """
-        super(DDQNSingle, self).__init__(CONFIG)
+        super(DDQN_image, self).__init__(CONFIG)
 
         self.mode = mode # 'normal' or 'RA'
         self.terminalType = terminalType
 
         #== ENV PARAM ==
-        self.numAction = numAction
-        self.actionList = actionList
+        self.actionNum = len(actionSet)
+        self.actionSet = actionSet
 
         #== Build NN for (D)DQN ==
         self.dimList = dimList
+        self.kernel_sz = kernel_sz
+        self.n_channel = n_channel
         self.actType = CONFIG.ACTIVATION
-        self.build_network(dimList, self.actType, verbose)
-        print("DDQN: mode-{}; terminalType-{}".format(
-            self.mode, self.terminalType))
+        self.build_network(dimList, kernel_sz, n_channel, self.actType, verbose)
+        print("DDQN: mode-{}; terminalType-{}".format(self.mode, self.terminalType))
 
 
-    def build_network(self, dimList, actType='Tanh', verbose=True):
+    def build_network(self, dimList, kernel_sz, n_channel, actType='Tanh', verbose=True):
         """
-        build_network
+        build_network [summary]
 
         Args:
-            dimList (np.ndarray): dimensions of each layer in the NN.
+            dimList (np.ndarray): dimensions of each linear layer.
+            kernel_sz (np.ndarray): kernel size of each conv layer.
+            n_channel (np.ndarray): number oof output channels of each conv layer.
             actType (str, optional): activation function. Defaults to 'Tanh'.
             verbose (bool, optional): print or not. Defaults to True.
         """
-        self.Q_network = MLP(dimList, actType, verbose=verbose)
-        self.target_network = MLP(dimList, actType)
+        self.Q_network = ConvNet(   mlp_dimList=dimList,
+                                    cnn_kernel_size=kernel_sz,
+                                    cnn_channel_numbers=n_channel,
+                                    mlp_act=actType,
+                                    mlp_output_act='Identity',
+                                    verbose=verbose)
+        self.target_network = copy.deepcopy(self.Q_network)
 
         if self.device == torch.device('cuda'):
             self.Q_network.cuda()
@@ -454,7 +464,7 @@ class DDQNSingle(DDQN):
         # tensor.min() returns (value, indices), which are in tensor form
         state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         if (np.random.rand() < self.EPSILON) and explore:
-            action_index = np.random.randint(0, self.numAction)
+            action_index = np.random.randint(0, self.actionNum)
         else:
             action_index = self.Q_network(state).min(dim=1)[1].item()
-        return self.actionList[action_index], action_index
+        return self.actionSet[action_index], action_index
