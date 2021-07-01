@@ -376,6 +376,14 @@ class NavigationObsPBEnv(gym.Env):
 
 
     #== GETTER ==
+    def report(self):
+        print("Dynamic parameters:")
+        print("- cons: {:.1f}, tar: {:.1f}".format(
+            self._obs_radius, self._goal_radius))
+        print("- v: {:.1f}, w_max: {:.1f}, dt: {:.1f}".format(
+            self.v, self.action_lim[0], self.dt))
+
+
     def get_axes(self):
         """ Gets the bounds for the environment.
 

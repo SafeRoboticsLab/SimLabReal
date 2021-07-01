@@ -11,7 +11,7 @@ from .neuralNetwork import MLP, ConvNet
 
 #== Critic ==
 class TwinnedQNetwork(nn.Module):
-    def __init__(self, dimList, actType='Tanh', device='cpu', image=False,
+    def __init__(self, dimList, img_sz, actType='Tanh', device='cpu', image=False,
             actionDim=1, verbose=True, **kwargs):
 
         super(TwinnedQNetwork, self).__init__()
@@ -27,6 +27,7 @@ class TwinnedQNetwork(nn.Module):
                                 mlp_append_dim=actionDim,
                                 mlp_act=actType,
                                 mlp_output_act='Identity',
+                                img_size=img_sz,
                                 verbose=verbose).to(device)
             # self.Q2 = ConvNet(  mlp_dimList=dimList,
             #                     mlp_append_dim=actionDim,
@@ -124,7 +125,7 @@ class GaussianPolicy(nn.Module):
 
 
 class DeterministicPolicy(nn.Module):
-    def __init__(self, dimList, actionSpace, actType='Tanh', device='cpu',
+    def __init__(self, dimList, img_sz, actionSpace, actType='Tanh', device='cpu',
             noiseStd=0.1, noiseClamp=0.5, image=False, verbose=True, **kwargs):
 
         super(DeterministicPolicy, self).__init__()
@@ -139,6 +140,7 @@ class DeterministicPolicy(nn.Module):
                                 cnn_channel_numbers=n_channel,
                                 mlp_act=actType,
                                 mlp_output_act='Tanh',
+                                img_size=img_sz,
                                 verbose=verbose).to(device)
         else:
             self.mean = MLP(dimList, 

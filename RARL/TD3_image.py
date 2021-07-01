@@ -15,7 +15,7 @@ from .model import DeterministicPolicy, TwinnedQNetwork
 from .ActorCritic import ActorCritic
 
 class TD3_image(ActorCritic):
-    def __init__(self, CONFIG, actionSpace, dimLists, kernel_sz, n_channel,
+    def __init__(self, CONFIG, actionSpace, dimLists, img_sz, kernel_sz, n_channel,
             terminalType='g', verbose=True):
         """
         __init__: initialization.
@@ -23,7 +23,8 @@ class TD3_image(ActorCritic):
         Args:
             CONFIG (Class object): hyper-parameter configuration.
             actionSpace (Class object): consists of `high` and `low` attributes.
-            dimList (list): consists of dimension lists
+            dimList (list): consists of dimension lists.
+            img_sz (np.ndarray): image size of input.
             actType (dict, optional): consists of activation types.
                 Defaults to ['Tanh', 'Tanh'].
             verbose (bool, optional): print info or not. Defaults to True.
@@ -35,23 +36,28 @@ class TD3_image(ActorCritic):
         assert dimLists is not None, "Define the architectures"
         self.dimListCritic = dimLists[0]
         self.dimListActor = dimLists[1]
+        self.img_sz = img_sz
+        self.kernel_sz = kernel_sz
+        self.n_channel = n_channel
         self.actType = CONFIG.ACTIVATION
-        self.build_network(dimLists, kernel_sz, n_channel, self.actType, verbose=verbose)
+        self.build_network(dimLists, img_sz, kernel_sz, n_channel, self.actType, verbose=verbose)
 
 
-    def build_network(self, dimLists, kernel_sz, n_channel,
+    def build_network(self, dimLists, img_sz, kernel_sz, n_channel,
             actType={'critic':'Tanh', 'actor':'Tanh'}, verbose=True):
-        self.build_critic(dimLists[0], kernel_sz, n_channel, actType['critic'],
+        self.build_critic(dimLists[0], img_sz, kernel_sz, n_channel, actType['critic'],
                 verbose=verbose)
         print()
-        self.build_actor(dimLists[1], kernel_sz, n_channel, actType['actor'],
+        self.build_actor(dimLists[1], img_sz, kernel_sz, n_channel, actType['actor'],
                 verbose=verbose)
         self.build_optimizer()
 
 
-    def build_critic(self, dimList, kernel_sz, n_channel, actType='Tanh', verbose=True):
+    def build_critic(self, dimList, img_sz, kernel_sz, n_channel, actType='Tanh',
+            verbose=True):
         self.critic = TwinnedQNetwork(
                         dimList=dimList,
+                        img_sz=img_sz,
                         kernel_sz=kernel_sz,
                         n_channel=n_channel,
                         actType=actType,
@@ -65,9 +71,10 @@ class TD3_image(ActorCritic):
             p.requires_grad = False
 
 
-    def build_actor(self, dimListActor, kernel_sz, n_channel, actType='Tanh',
+    def build_actor(self, dimListActor, img_sz, kernel_sz, n_channel, actType='Tanh',
             noiseStd=0.2, noiseClamp=0.5, verbose=True):
         self.actor = DeterministicPolicy(   dimListActor,
+                                            img_sz=img_sz,
                                             kernel_sz=kernel_sz,
                                             n_channel=n_channel,
                                             actionSpace=self.actionSpace,
@@ -98,7 +105,6 @@ class TD3_image(ActorCritic):
 
     def initQ(self, env, warmupIter, outFolder, num_warmup_samples=5000,
                 vmin=-1, vmax=1, plotFigure=True, storeFigure=True):
-        loss = 0.0
         # lossList = np.empty(warmupIter, dtype=float)
         lossArray = []
         states, value = env.get_warmup_examples(num_warmup_samples)

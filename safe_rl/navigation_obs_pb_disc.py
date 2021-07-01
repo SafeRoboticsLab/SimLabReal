@@ -51,15 +51,6 @@ class NavigationObsPBEnvDisc(NavigationObsPBEnv):
         return w
 
 
-    #== Getter ==
-    def report(self):
-        print("Dynamic parameters:")
-        print("- cons: {:.1f}, tar: {:.1f}".format(
-            self._obs_radius, self._goal_radius))
-        print("- v: {:.1f}, w_max: {:.1f}, dt: {:.1f}".format(
-            self.v, self.action_lim[0], self.dt))
-
-
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
 

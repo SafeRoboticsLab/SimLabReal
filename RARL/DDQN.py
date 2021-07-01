@@ -8,6 +8,7 @@ import torch.optim as optim
 from collections import namedtuple
 import os
 import pickle
+import numpy as np
 
 from .scheduler import StepLRMargin, StepResetLR
 from .ReplayMemory import ReplayMemory
@@ -153,3 +154,10 @@ class DDQN():
         l_x = torch.FloatTensor([info['l_x'] for info in batch.info]).to(self.device).view(-1)
 
         return non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x
+
+
+    def genRandomActions(self, num_actions):
+        actions = np.empty(shape=(num_actions, self.actionDim), dtype=float)
+        for i in range(num_actions):
+            actions[i, :] = self.actionSpace.sample()
+        return actions

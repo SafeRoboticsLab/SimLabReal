@@ -173,9 +173,14 @@ class ConvNet(nn.Module):
             self.moduleList.append(module)
 
         #= Spatial softmax, output 64 (32 features x 2d pos)
+        if np.isscalar(img_size):
+            height = img_size
+            width = img_size
+        else:
+            height, width = img_size
         module = nn.Sequential( OrderedDict([
                 ('softmax', SpatialSoftmax(
-                            height=img_size, width=img_size,
+                            height=height, width=width,
                             channel=cnn_channel_numbers[1]))
         ]))
         self.moduleList.append(module)

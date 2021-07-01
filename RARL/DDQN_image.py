@@ -10,6 +10,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.functional import mse_loss, smooth_l1_loss
+import torch.utils.data as Data
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ from .neuralNetwork import ConvNet
 from .DDQN import DDQN, Transition
 
 class DDQN_image(DDQN):
-    def __init__(self, CONFIG, actionSet, dimList, kernel_sz, n_channel,
+    def __init__(self, CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
         mode='RA', terminalType='g', verbose=True):
         """
         __init__
@@ -30,6 +31,7 @@ class DDQN_image(DDQN):
             CONFIG (object): configuration.
             actionSet (list): action set.
             dimList (np.ndarray): dimensions of each linear layer.
+            img_sz (np.ndarray): image size of input.
             kernel_sz (np.ndarray): kernel size of each conv layer.
             n_channel (np.ndarray): number oof output channels of each conv layer.
             mode (str, optional): the learning mode. Defaults to 'RA'.
@@ -47,19 +49,22 @@ class DDQN_image(DDQN):
 
         #== Build NN for (D)DQN ==
         self.dimList = dimList
+        self.img_sz = img_sz
         self.kernel_sz = kernel_sz
         self.n_channel = n_channel
         self.actType = CONFIG.ACTIVATION
-        self.build_network(dimList, kernel_sz, n_channel, self.actType, verbose)
+        self.build_network(dimList, img_sz, kernel_sz, n_channel, self.actType, verbose)
         print("DDQN: mode-{}; terminalType-{}".format(self.mode, self.terminalType))
 
 
-    def build_network(self, dimList, kernel_sz, n_channel, actType='Tanh', verbose=True):
+    def build_network(self, dimList, img_sz, kernel_sz, n_channel,
+            actType='Tanh', verbose=True):
         """
         build_network [summary]
 
         Args:
             dimList (np.ndarray): dimensions of each linear layer.
+            img_sz (np.ndarray): image size of input.
             kernel_sz (np.ndarray): kernel size of each conv layer.
             n_channel (np.ndarray): number oof output channels of each conv layer.
             actType (str, optional): activation function. Defaults to 'Tanh'.
@@ -70,6 +75,7 @@ class DDQN_image(DDQN):
                                     cnn_channel_numbers=n_channel,
                                     mlp_act=actType,
                                     mlp_output_act='Identity',
+                                    img_size=img_sz,
                                     verbose=verbose)
         self.target_network = copy.deepcopy(self.Q_network)
 
@@ -226,23 +232,35 @@ class DDQN_image(DDQN):
         Returns:
             np.ndarray: loss of fitting Q-values to heuristic values.
         """
-        lossList = np.empty(warmupIter, dtype=float)
+        lossArray = []
+        states, value = env.get_warmup_examples(num_warmup_samples)
+        states = torch.FloatTensor(states).to(self.device)
+        value = torch.FloatTensor(value).to(self.device)
+        heuristic_dataset = Data.TensorDataset(states, value)
+        heuristic_dataloader = Data.DataLoader( heuristic_dataset,
+                                                batch_size=32,
+                                                shuffle=True)
+        self.Q_network.train()
         for ep_tmp in range(warmupIter):
-            states, heuristic_v = env.get_warmup_examples(num_warmup_samples=num_warmup_samples)
+            i = 0
+            lossList = []
+            for stateTensor, valueTensor in heuristic_dataloader:
+                i += 1
+                v = self.Q_network(stateTensor)
+                valueTensor = valueTensor.repeat(1, 3)
+                loss = mse_loss(input=v, target=valueTensor, reduction='sum')
 
-            self.Q_network.train()
-            heuristic_v = torch.from_numpy(heuristic_v).float().to(self.device)
-            states = torch.from_numpy(states).float().to(self.device)
-            v = self.Q_network(states)
-            # loss = smooth_l1_loss(input=v, target=heuristic_v)
-            loss = mse_loss(input=v, target=heuristic_v, reduction='sum')
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.Q_network.parameters(), self.max_grad_norm)
+                self.optimizer.step()
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.Q_network.parameters(), self.max_grad_norm)
-            self.optimizer.step()
-            lossList[ep_tmp] = loss.detach().cpu().numpy()
-            print('\rWarmup Q [{:d}]. MSE = {:f}'.format(ep_tmp+1, loss),end='')
+                lossList.append(loss.detach().cpu().numpy())
+                print('\rWarmup Q [{:d}-{:d}]. MSE = {:f}'.format(
+                    ep_tmp+1, i, loss.detach()), end='')
+            lossArray.append(lossList)
+        self.target_network.load_state_dict(self.Q_network.state_dict()) # hard replace
+        self.build_optimizer()
 
         print(" --- Warmup Q Ends")
         if plotFigure or storeFigure:
@@ -257,8 +275,6 @@ class DDQN_image(DDQN):
                 plt.show()
                 plt.pause(0.001)
                 plt.close()
-        self.target_network.load_state_dict(self.Q_network.state_dict()) # hard replace
-        self.build_optimizer()
 
         return lossList
 
