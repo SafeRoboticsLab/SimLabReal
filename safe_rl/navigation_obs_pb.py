@@ -4,10 +4,10 @@ import pybullet as pb
 from pybullet_utils import bullet_client as bc
 import gym
 from matplotlib.ticker import LinearLocator
+from abc import abstractmethod
 
-
-import os
-os.sys.path.append(os.path.join(os.getcwd(), '.'))
+# import os
+# os.sys.path.append(os.path.join(os.getcwd(), '.'))
 from safe_rl.util_geom import euler2rot
 from gym_reachability.gym_reachability.envs.env_utils import plot_arc, plot_circle
 
@@ -56,7 +56,7 @@ class NavigationObsPBEnv(gym.Env):
         self.img_H = img_H
         self.img_W = img_W
         self.observation_space = gym.spaces.Box(
-            low=np.float32(0.), 
+            low=np.float32(0.),
             high=np.float32(1.),
             shape=(1, img_H, img_W))
 
@@ -68,30 +68,23 @@ class NavigationObsPBEnv(gym.Env):
         self.action_dim = 1
         # TODO: tuning?
         self.v = 0.2
-        # self.w = [-1.0, 0, 1.0]
         self.dt = 0.1
-        # Discrete action space
-        # self.action_space = gym.spaces.Discrete(3)
-        # Continuous action space
-        self.action_lim = np.float32(np.array([1.]))
-        self.action_space = gym.spaces.Box(-self.action_lim, self.action_lim)
         self.doneType = doneType
+        #! action_space is defined in the child class
+        self.action_lim = np.float32(np.array([1.]))
 
         # Extract task info
         # TODO: specify more
         self._task = task
-        self._goal_loc = task.get('goal_loc', np.array([self.state_bound-0.1, 0.]))
-        self._goal_radius = task.get('goal_radius', 0.05)
+        self._goal_loc = task.get('goal_loc', np.array([self.state_bound-0.2, 0.]))
+        self._goal_radius = task.get('goal_radius', 0.15)
         self._obs_loc  = task.get('obs_loc', np.array([self.state_bound/2, 0]))
-        self._obs_radius = task.get('obs_radius', 0.1)
+        self._obs_radius = task.get('obs_radius', 0.3)
         self._obs_buffer = 0.1 # no cost if outside buffer
 
         # Set up PyBullet parameters
         self._renders = render
         self._physics_client_id = -1
-
-        # Fix seed
-        self.seed(0)
 
 
     def seed(self, seed=None):
@@ -113,7 +106,7 @@ class NavigationObsPBEnv(gym.Env):
 
     def reset(self, random_init=True):
         if random_init:
-            self._state = self.sample_state(self.sample_inside_obs, 
+            self._state = self.sample_state(self.sample_inside_obs,
                                             self.sample_inside_tar)
         else:
             self._state = self.car_init_state
@@ -247,7 +240,7 @@ class NavigationObsPBEnv(gym.Env):
 
     def sample_state(self, sample_inside_obs=False, sample_inside_tar=True):
         # random sample `theta`
-        theta_rnd = 2.0 * np.pi * np.random.uniform() 
+        theta_rnd = 2.0 * np.pi * np.random.uniform()
 
         # random sample [`x`, `y`]
         flag = True
@@ -267,6 +260,84 @@ class NavigationObsPBEnv(gym.Env):
         x_rnd, y_rnd = rnd_state
 
         return np.array([x_rnd, y_rnd, theta_rnd])
+
+
+    def integrate_forward(self, state, w):
+        """ Integrate the dynamics forward by one step.
+
+        Args:
+            state: x, y, theta.
+            w: angular speed.
+
+        Returns:
+            State variables (x,y,theta) integrated one step forward in time.
+        """
+
+        x, y, theta = state
+        x_new = x + self.v*np.cos(theta)*self.dt
+        y_new = y + self.v*np.sin(theta)*self.dt
+        theta_new = np.mod(theta + w*self.dt, 2*np.pi)
+        state = np.array([x_new, y_new, theta_new])
+
+        return state
+
+    @abstractmethod
+    def getTurningRate(self, action):
+        raise NotImplementedError
+
+
+    def step(self, action):
+        # Determine turning rate
+        w = self.getTurningRate(action)
+
+        #= Dynamics
+        self._state = self.integrate_forward(self._state, w)
+
+        # Move car in simulation - not necessary if not visualizing in GUI -
+        # since all we need from PyBullet is simulation of the camera and the
+        # obstacle field
+        if self._renders:
+            x_new, y_new, theta_new = self._state
+            self._p.resetBasePositionAndOrientation(self.car_id,
+                                [x_new,y_new,0.03],
+                                self._p.getQuaternionFromEuler([0,0,theta_new]))
+
+        #= `l_x` and `g_x` signal
+        l_x = self.target_margin(self._state)
+        g_x = self.safety_margin(self._state)
+        fail = g_x > 0
+        success = l_x <= 0
+
+        #= `reward` signal
+        # TODO: tuning?
+        dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
+        reward_goal = -dist_to_goal_center
+
+        dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
+        dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
+        if dist_to_obs_center < self._obs_radius:
+            reward_obs = -1
+        elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
+            reward_obs = -dist_to_obs_boundary/self._obs_buffer
+        else:
+            reward_obs = 0
+        reward = reward_goal + reward_obs
+
+        #= `done` signal
+        if self.doneType == 'end':
+            done = not self.check_within_bounds(self._state)
+        elif self.doneType == 'fail':
+            done = fail
+        elif self.doneType == 'TF':
+            done = fail or success
+        else:
+            raise ValueError("invalid doneType")
+
+        if done and self.doneType == 'fail':
+            g_x = 1  # TODO Tuning
+
+        return self._get_obs(self._state), reward, done, {'task': self._task,
+            'state': self._state, 'g_x': g_x, 'l_x': l_x}
 
 
     def _get_obs(self, state):
@@ -304,89 +375,6 @@ class NavigationObsPBEnv(gym.Env):
         return depth
 
 
-    def step(self, action):
-        # Determine turning rate
-        # w = self.w[action]
-        if not np.isscalar(action):
-            action = action[0]
-        w = action
-
-        #= Dynamics
-        self._state = self.integrate_forward(self._state, w)
-        # x,y,theta = self._state
-        # x_new = x + self.v*np.cos(theta)*self.dt
-        # y_new = y + self.v*np.sin(theta)*self.dt
-        # theta_new = theta + w*self.dt
-        # self._state = [x_new, y_new, theta_new]
-
-        # Move car in simulation - not necessary if not visualizing in GUI -
-        # since all we need from PyBullet is simulation of the camera and the
-        # obstacle field
-        if self._renders:
-            x_new, y_new, theta_new = self._state
-            self._p.resetBasePositionAndOrientation(self.car_id,
-                                [x_new,y_new,0.03],
-                                self._p.getQuaternionFromEuler([0,0,theta_new]))
-
-        #= `l_x` and `g_x` signal
-        l_x = self.target_margin(self._state)
-        g_x = self.safety_margin(self._state)
-        fail = g_x > 0
-        success = l_x <= 0
-
-        #= `reward` signal
-        # TODO: tuning?
-        dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
-        reward_goal = -dist_to_goal_center
-
-        dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
-        dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
-        if dist_to_obs_center < self._obs_radius:
-            reward_obs = -1
-        elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
-            reward_obs = -dist_to_obs_boundary/self._obs_buffer
-        else:
-            reward_obs = 0
-        reward = reward_goal + reward_obs
-
-        #= `done` signal
-        if self.doneType == 'end':
-            done = not self.check_within_bounds(self.state)
-        elif self.doneType == 'fail':
-            done = fail
-        elif self.doneType == 'TF':
-            done = fail or success
-        else:
-            raise ValueError("invalid doneType")
-
-        if done and self.doneType == 'fail':
-            g_x = 1  # TODO Tuning
-
-        return self._get_obs(self._state), reward, done, {'task': self._task,
-            'state': self._state, 'g_x': g_x, 'l_x': l_x}
-
-
-    def integrate_forward(self, state, w):
-        """ Integrate the dynamics forward by one step.
-
-        Args:
-            state: x, y, theta.
-            w: angular speed.
-
-        Returns:
-            State variables (x,y,theta) integrated one step forward in time.
-        """
-
-        x, y, theta = state
-        x_new = x + self.v*np.cos(theta)*self.dt
-        y_new = y + self.v*np.sin(theta)*self.dt
-        theta_new = np.mod(theta + w*self.dt, 2*np.pi)
-        state = np.array([x_new, y_new, theta_new])
-        # print(state)
-
-        return state
-
-
     #== GETTER ==
     def get_axes(self):
         """ Gets the bounds for the environment.
@@ -404,7 +392,7 @@ class NavigationObsPBEnv(gym.Env):
         states = np.zeros(shape=(num_warmup_samples,) + self.observation_space.shape)
 
         for i in range(num_warmup_samples):
-            _state = self.sample_state(self.sample_inside_obs, 
+            _state = self.sample_state(self.sample_inside_obs,
                                             self.sample_inside_tar)
             l_x = self.target_margin(_state)
             g_x = self.safety_margin(_state)
@@ -523,55 +511,6 @@ class NavigationObsPBEnv(gym.Env):
         goal = [1.0, 0.0]
         obs_loc = [0.5, 0.0]
         obs_radius = 0.1
-        tasks = [{'goal': goal, 'obs_loc': obs_loc, 'obs_radius': obs_radius} 
+        tasks = [{'goal': goal, 'obs_loc': obs_loc, 'obs_radius': obs_radius}
             for _ in range(num_tasks)]
         return tasks
-
-
-if __name__ == '__main__':
-    import matplotlib.pyplot as plt
-
-    # Test single environment in GUI
-    render=True
-    env = NavigationObsPBEnv(render=render)
-    print(env._renders)
-    print("\n== Environment Information ==")
-    print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
-    print("- state bound: {:.2f}, done type: {}".format(env.state_bound, env.doneType))
-    print("- action space:", env.action_space)
-    # fig = plt.figure()
-    # plt.imshow(obs, cmap='Greys')
-    # plt.show()
-    # print(env.safety_margin(np.array([-1.5, .5])))
-    # print(env.safety_margin(np.array([1.5, .5])))
-    # print(env.safety_margin(np.array([.5, 1.5])))
-    # print(env.safety_margin(np.array([.5, -1.5])))
-
-    # Run 3 trials
-    for i in range(3):
-        print('\n== {} =='.format(i))
-        obs = env.reset(random_init=True)
-        for t in range(100):
-            # Apply random action
-            # action = random.randint(0,2)
-            action = env.action_space.sample()[0]
-            obs, r, done, info = env.step(action)
-            state = info['state']
-
-            # Debug
-            x, y, yaw = state
-            l_x = info['l_x']
-            g_x = info['g_x']
-            # print('[{}] a: {:.2f}, x: {:.3f}, y: {:.3f}, yaw: {:.3f}, r: {:.3f}, d: {}'.format(
-            #     t, action, x, y, yaw, r, done))
-            print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
-                t, x, y, l_x, g_x, done))
-            if render:
-                plt.imshow(obs[0], cmap='Greys')
-                # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys',
-                # origin='lower')
-                plt.show(block=False)    # Default is a blocking call
-                plt.pause(.25)
-                plt.close()
-            if done:
-                break
