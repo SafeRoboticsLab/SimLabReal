@@ -11,6 +11,27 @@ from abc import abstractmethod
 from safe_rl.util_geom import euler2rot
 from gym_reachability.gym_reachability.envs.env_utils import plot_arc, plot_circle
 
+# def rgba2rgb( rgba, background=(255,255,255) ):
+#     row, col, ch = rgba.shape
+
+#     if ch == 3:
+#         return rgba
+
+#     assert ch == 4, 'RGBA image has 4 channels.'
+
+#     rgb = np.zeros( (row, col, 3), dtype='float32' )
+#     r, g, b, a = rgba[:,:,0], rgba[:,:,1], rgba[:,:,2], rgba[:,:,3]
+
+#     a = np.asarray( a, dtype='float32' ) / 255.0
+
+#     R, G, B = background
+
+#     rgb[:,:,0] = r * a + (1.0 - a) * R
+#     rgb[:,:,1] = g * a + (1.0 - a) * G
+#     rgb[:,:,2] = b * a + (1.0 - a) * B
+
+#     return np.asarray( rgb, dtype='uint8' )
+
 
 class NavigationObsPBEnv(gym.Env):
     """Simple 2D navigation with obstacle using PyBullet. No dynamics/collision
@@ -383,12 +404,15 @@ class NavigationObsPBEnv(gym.Env):
         aspect = 1.
         projection_matrix = self._p.computeProjectionMatrixFOV(
             fov=120.0, aspect=aspect, nearVal=near, farVal=far)
-        _, _, _, depth, _ = self._p.getCameraImage(self.img_H, self.img_W,
+        _, _, rgbImg, depth, _ = self._p.getCameraImage(self.img_H, self.img_W,
             view_matrix, projection_matrix,
             flags=self._p.ER_NO_SEGMENTATION_MASK)
-        depth = np.reshape(depth, (1, self.img_H, self.img_W))
-        depth = far*near/(far - (far - near)*depth)
-        return depth
+        # depth = np.reshape(depth, (1, self.img_H, self.img_W))
+        # depth = far*near/(far - (far - near)*depth)
+        # return depth
+
+        # return rgba2rgb(rgbImg)/255
+        return rgbImg
 
 
     #== GETTER ==

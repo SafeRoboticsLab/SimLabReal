@@ -83,7 +83,8 @@ if __name__ == '__main__':
             print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
                 t, x, y, l_x, g_x, done))
             if render:
-                plt.imshow(obs[0], cmap='Greys')
+                # plt.imshow(obs[0], cmap='Greys')
+                plt.imshow(obs)
                 plt.show(block=False)    # Default is a blocking call
                 plt.pause(.5)
                 plt.close()
