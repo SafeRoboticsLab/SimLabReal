@@ -125,6 +125,9 @@ class SpatialSoftmax(torch.nn.Module):
         return expected_xy
 
 
+def conv2d_size_out(size, kernel_size=5, stride=2, padding=1):
+    return (size - kernel_size + 2*padding) // stride  + 1
+
 class ConvNet(nn.Module):
     def __init__(   self,
                     input_n_channel=1, # not counting z_conv
@@ -137,7 +140,8 @@ class ConvNet(nn.Module):
                     z_conv_dim=0,
                     z_mlp_dim=0,
                     img_size=128,
-                    verbose=True
+                    verbose=True,
+                    use_sm=True
     ):
 
         super(ConvNet, self).__init__()
@@ -150,45 +154,60 @@ class ConvNet(nn.Module):
         self.n_conv_layers = len(cnn_kernel_size)
         self.n_mlp_layers = len(mlp_dimList)
 
+        if np.isscalar(img_size):
+            height = img_size
+            width = img_size
+        else:
+            height, width = img_size
+
         # Use ModuleList to store [] conv layers, 1 spatial softmax and [] MLP layers
         self.moduleList = nn.ModuleList()
 
         #= CNN: W' = (W - kernel_size + 2*padding) / stride + 1
-        # Nx1x128x128 -> Nx16x128x128 -> Nx32x128x128
+        # Nx1xHxW -> Nx16xHxW -> Nx32xHxW
         for i, (kernel_size, out_channels) in enumerate(zip(cnn_kernel_size, 
                                                             output_n_channel)):
-            padding = int( (kernel_size-1) / 2)
+            # padding = int( (kernel_size-1) / 2)
+            padding = 0
+            stride = (kernel_size - 1) // 2
             if i == 0:
                 in_channels = input_n_channel + z_conv_dim
             else:
                 in_channels = output_n_channel[i-1]
 
             module = nn.Sequential( OrderedDict([
-                ('conv1', nn.Conv2d(
+                ('conv_1', nn.Conv2d(
                             in_channels=in_channels,
                             out_channels=out_channels,
-                            kernel_size=kernel_size, stride=1, padding=padding)),
-                ('activation1', nn.ReLU())
+                            kernel_size=kernel_size,
+                            stride=stride,
+                            padding=padding)),
+                ('batch_norm_1', nn.BatchNorm2d(num_features=out_channels)),
+                ('activation_1', nn.ReLU())
             ]))
             self.moduleList.append(module)
+            height = conv2d_size_out(height, kernel_size, stride, padding)
+            width  = conv2d_size_out(width,  kernel_size, stride, padding)
 
-        #= Spatial softmax, output 64 (32 features x 2d pos)
-        if np.isscalar(img_size):
-            height = img_size
-            width = img_size
-        else:
-            height, width = img_size
-        module = nn.Sequential( OrderedDict([
+        #= Spatial softmax, output 64 (32 features x 2d pos) or Flatten
+        self.use_sm = use_sm
+        if use_sm:
+            module = nn.Sequential( OrderedDict([
                 ('softmax', SpatialSoftmax(
                             height=height, width=width,
                             channel=output_n_channel[-1]))
-        ]))
+            ]))
+            cnn_output_dim = int(output_n_channel[-1] * 2)
+        else:
+            module = nn.Sequential( OrderedDict([
+                ('flatten', nn.Flatten())
+            ]))
+            cnn_output_dim = int(output_n_channel[-1] * height * width)
         self.moduleList.append(module)
 
         #= MLP
         for i, out_features in enumerate(mlp_dimList):
             if i == 0:
-                cnn_output_dim = int(output_n_channel[-1] * 2)
                 in_features = cnn_output_dim + mlp_append_dim + z_mlp_dim
             else:
                 in_features = mlp_dimList[i-1]
@@ -235,7 +254,7 @@ class ConvNet(nn.Module):
         for i in range(self.n_conv_layers):
             x = self.moduleList[i](x)
 
-        # Spatial softmax
+        # Spatial_Softmax or Flatten
         # x = self.sm(x)
         x = self.moduleList[self.n_conv_layers](x)
 

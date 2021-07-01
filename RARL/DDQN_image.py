@@ -23,7 +23,7 @@ from .DDQN import DDQN, Transition
 
 class DDQN_image(DDQN):
     def __init__(self, CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
-            mode='RA', terminalType='g', verbose=True):
+            mode='RA', terminalType='g', verbose=True, use_sm=True):
         """
         __init__
 
@@ -53,12 +53,13 @@ class DDQN_image(DDQN):
         self.kernel_sz = kernel_sz
         self.n_channel = n_channel
         self.actType = CONFIG.ACTIVATION
-        self.build_network(dimList, img_sz, kernel_sz, n_channel, self.actType, verbose)
+        self.build_network(dimList, img_sz, kernel_sz, n_channel, self.actType,
+                use_sm, verbose)
         print("DDQN: mode-{}; terminalType-{}".format(self.mode, self.terminalType))
 
 
     def build_network(self, dimList, img_sz, kernel_sz, n_channel,
-            actType='Tanh', verbose=True):
+            actType='Tanh', use_sm=True, verbose=True):
         """
         build_network [summary]
 
@@ -78,6 +79,7 @@ class DDQN_image(DDQN):
                                     mlp_act=actType,
                                     mlp_output_act='Identity',
                                     img_size=img_sz,
+                                    use_sm=use_sm,
                                     verbose=verbose)
         self.Q_network.to(self.device)
         self.target_network = copy.deepcopy(self.Q_network)
@@ -211,7 +213,7 @@ class DDQN_image(DDQN):
         print(" --- Warmup Buffer Ends")
 
 
-    def initQ(  self, env, warmupIter, outFolder, num_warmup_samples=200,
+    def initQ(  self, env, warmupIter, outFolder, num_warmup_samples=200, batch_sz=64,
                 vmin=-1, vmax=1, plotFigure=True, storeFigure=True):
         """
         initQ: initalize Q-network.
@@ -237,7 +239,7 @@ class DDQN_image(DDQN):
         value = torch.FloatTensor(value).to(self.device)
         heuristic_dataset = Data.TensorDataset(states, value)
         heuristic_dataloader = Data.DataLoader( heuristic_dataset,
-                                                batch_size=32,
+                                                batch_size=batch_sz,
                                                 shuffle=True)
         self.Q_network.train()
         startInitQ = time.time()
@@ -247,8 +249,9 @@ class DDQN_image(DDQN):
             for stateTensor, valueTensor in heuristic_dataloader:
                 i += 1
                 v = self.Q_network(stateTensor)
-                valueTensor = valueTensor.repeat(1, 3)
-                loss = mse_loss(input=v, target=valueTensor, reduction='sum')
+                v = torch.mean(v, dim=1, keepdim=True)
+                # valueTensor = valueTensor.repeat(1, 3)
+                loss = mse_loss(input=v, target=valueTensor, reduction='mean')
 
                 self.optimizer.zero_grad()
                 loss.backward()
