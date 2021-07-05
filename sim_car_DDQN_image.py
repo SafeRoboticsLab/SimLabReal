@@ -372,7 +372,7 @@ if args.plotFigure or args.storeFigure:
     ax = axes[0]
     v = env.get_value(agent.Q_network, agent.device, theta=0, nx=nx, ny=ny)
     im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=vmin, vmax=vmax, zorder=-1)
+        origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
     CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,
         linestyles='dashed')
     ax.set_xlabel('Value', fontsize=24)
