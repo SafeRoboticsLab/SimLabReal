@@ -80,7 +80,7 @@ class NavigationObsPBEnv(gym.Env):
         self.img_W = img_W
         self.useRGB = useRGB
         if useRGB:
-            num_img_channel = 4 # RGBD
+            num_img_channel = 3 # RGB
         else:
             num_img_channel = 1 # D only
         self.observation_space = gym.spaces.Box(
