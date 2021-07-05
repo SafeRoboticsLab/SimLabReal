@@ -57,22 +57,20 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     # Test single environment in GUI
-    render=False
+    render=True
     useRGB=True
-    env = NavigationObsPBEnvDisc(render=render, useRGB=useRGB, doneType='end')
+    env = NavigationObsPBEnvDisc(render=render, useRGB=useRGB)
     print(env._renders)
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
     print("- state bound: {:.2f}, done type: {}".format(env.state_bound, env.doneType))
     print("- action space:", env.action_space)
 
-    # Run 3 trials
+    # Run 2 trials
+    states = [np.array([1.7, 0, 0]), None]
     for i in range(2):
         print('\n== {} =='.format(i))
-        if i == 0:
-            obs = env.reset(random_init=False)
-        else:
-            obs = env.reset(random_init=True)
+        obs = env.reset(random_init=False, state_init=states[i])
         for t in range(100):
             # Apply random action
             action = env.action_space.sample()
@@ -85,12 +83,10 @@ if __name__ == '__main__':
             g_x = info['g_x']
             print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
                 t, x, y, l_x, g_x, done))
-            if useRGB:
-                plt.imshow(obs[:3].transpose(1,2,0))
-            else:
-                plt.imshow(obs[-1], cmap='Greys')
-            plt.show(block=False)    # Default is a blocking call
-            plt.pause(.5)
-            plt.close()
+            if render:
+                plt.imshow(obs[:3, :, :].transpose(1,2,0))
+                plt.show(block=False)    # Default is a blocking call
+                plt.pause(.5)
+                plt.close()
             if done:
                 break

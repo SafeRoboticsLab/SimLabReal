@@ -91,7 +91,7 @@ class NavigationObsPBEnv(gym.Env):
         # Color
         self.ground_rgba = [0.7, 0.7, 0.7, 1.0]
         self.wall_rgba = [0.5, 0.5, 0.5, 1.0]
-        self.obs_rgba = [1.0, 0.0, 0.0, 1.0] 
+        self.obs_rgba = [1.0, 0.0, 0.0, 1.0]
         self.goal_rgba  = [0.0, 1.0, 0.0, 1.0]
 
         # Car initial x/y/theta
@@ -138,10 +138,12 @@ class NavigationObsPBEnv(gym.Env):
         self._obs_radius = task['obs_radius']
 
 
-    def reset(self, random_init=True):
+    def reset(self, random_init=True, state_init=None):
         if random_init:
             self._state = self.sample_state(self.sample_inside_obs,
                                             self.sample_inside_tar)
+        elif state_init is not None:
+            self._state = state_init
         else:
             self._state = self.car_init_state
 
@@ -274,7 +276,7 @@ class NavigationObsPBEnv(gym.Env):
                 baseVisualShapeIndex=door_visual_id,
                 basePosition=[self.state_bound-0.01,
                             0,
-                            self.wall_height/2])  
+                            self.wall_height/2])
 
             # Set up car if visualizing in GUI
             if self._renders:
@@ -405,7 +407,13 @@ class NavigationObsPBEnv(gym.Env):
 
     def _get_obs(self, state):
         """
-        Depth image not normalized right now
+        _get_obs: get RGB or depth image given a state
+
+        Args:
+            state (np.ndarray): (x, y, yaw)
+
+        Returns:
+            np.ndarray: RGB or depth image, of the shape (C, H, W)
         """
         # State
         x, y, yaw = state
@@ -437,7 +445,8 @@ class NavigationObsPBEnv(gym.Env):
         depth = far*near/(far - (far - near)*depth)
         if self.useRGB:
             rgb = rgba2rgb(rgbImg).transpose(2,0,1)/255  # CHW
-            return np.concatenate((rgb, depth))
+            # return np.concatenate((rgb, depth))
+            return rgb
         else:
             return depth
         # return rgbImg/255

@@ -61,20 +61,12 @@ if __name__ == '__main__':
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
     print("- state bound: {:.2f}, done type: {}".format(env.state_bound, env.doneType))
     print("- action space:", env.action_space)
-    # fig = plt.figure()
-    # plt.imshow(obs, cmap='Greys')
-    # plt.show()
-    # print(env.safety_margin(np.array([-1.5, .5])))
-    # print(env.safety_margin(np.array([1.5, .5])))
-    # print(env.safety_margin(np.array([.5, 1.5])))
-    # print(env.safety_margin(np.array([.5, -1.5])))
-    # print(env._obs_loc, env._obs_radius)
-    # print(env.safety_margin(np.array([1, 0.2, 0])))
 
-    # Run 3 trials
-    for i in range(3):
+    # Run 2 trials
+    states = [np.array([1.7, 0, 0]), None]
+    for i in range(2):
         print('\n== {} =='.format(i))
-        obs = env.reset(random_init=True)
+        obs = env.reset(random_init=False, state_init=states[i])
         for t in range(100):
             # Apply random action
             action = env.action_space.sample()[0]
@@ -88,8 +80,7 @@ if __name__ == '__main__':
             print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
                 t, x, y, l_x, g_x, done))
             if render:
-                plt.imshow(obs[0], cmap='Greys', origin='lower')
-                # plt.imshow(np.flip(np.swapaxes(obs, 0, 1), 1), cmap='Greys', origin='lower')
+                plt.imshow(obs[:3, :, :].transpose(1,2,0))
                 plt.show(block=False)    # Default is a blocking call
                 plt.pause(.5)
                 plt.close()
