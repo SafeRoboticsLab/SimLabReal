@@ -11,26 +11,27 @@ from abc import abstractmethod
 from safe_rl.util_geom import euler2rot
 from gym_reachability.gym_reachability.envs.env_utils import plot_arc, plot_circle
 
-# def rgba2rgb( rgba, background=(255,255,255) ):
-#     row, col, ch = rgba.shape
 
-#     if ch == 3:
-#         return rgba
+def rgba2rgb( rgba, background=(255,255,255) ):
+    row, col, ch = rgba.shape
 
-#     assert ch == 4, 'RGBA image has 4 channels.'
+    if ch == 3:
+        return rgba
 
-#     rgb = np.zeros( (row, col, 3), dtype='float32' )
-#     r, g, b, a = rgba[:,:,0], rgba[:,:,1], rgba[:,:,2], rgba[:,:,3]
+    assert ch == 4, 'RGBA image has 4 channels.'
 
-#     a = np.asarray( a, dtype='float32' ) / 255.0
+    rgb = np.zeros( (row, col, 3), dtype='float32' )
+    r, g, b, a = rgba[:,:,0], rgba[:,:,1], rgba[:,:,2], rgba[:,:,3]
 
-#     R, G, B = background
+    a = np.asarray( a, dtype='float32' ) / 255.0
 
-#     rgb[:,:,0] = r * a + (1.0 - a) * R
-#     rgb[:,:,1] = g * a + (1.0 - a) * G
-#     rgb[:,:,2] = b * a + (1.0 - a) * B
+    R, G, B = background
 
-#     return np.asarray( rgb, dtype='uint8' )
+    rgb[:,:,0] = r * a + (1.0 - a) * R
+    rgb[:,:,1] = g * a + (1.0 - a) * G
+    rgb[:,:,2] = b * a + (1.0 - a) * B
+
+    return np.asarray( rgb, dtype='uint8' )
 
 
 class NavigationObsPBEnv(gym.Env):
@@ -46,6 +47,7 @@ class NavigationObsPBEnv(gym.Env):
     def __init__(self, task={},
                         img_H=128,
                         img_W=128,
+                        useRGB=True,
                         render=True,
                         doneType='fail'):
         """
@@ -76,13 +78,24 @@ class NavigationObsPBEnv(gym.Env):
         # Set up observation and action space for Gym
         self.img_H = img_H
         self.img_W = img_W
+        self.useRGB = useRGB
+        if useRGB:
+            num_img_channel = 4 # RGBD
+        else:
+            num_img_channel = 1 # D only
         self.observation_space = gym.spaces.Box(
             low=np.float32(0.),
             high=np.float32(1.),
-            shape=(1, img_H, img_W))
+            shape=(num_img_channel, img_H, img_W))
+
+        # Color
+        self.ground_rgba = [0.7, 0.7, 0.7, 1.0]
+        self.wall_rgba = [0.5, 0.5, 0.5, 1.0]
+        self.obs_rgba = [1.0, 0.0, 0.0, 1.0] 
+        self.goal_rgba  = [0.0, 1.0, 0.0, 1.0]
 
         # Car initial x/y/theta
-        self.car_init_state = np.array([1.5, 0., 0.])
+        self.car_init_state = np.array([0.1, 0., 0.])
 
         # Car dynamics
         self.state_dim = 3
@@ -156,9 +169,16 @@ class NavigationObsPBEnv(gym.Env):
                 halfExtents=[	self.state_bound/2,
                                 self.state_bound/2,
                                 self.wall_thickness/2])
+            ground_visual_id = p.createVisualShape(
+                p.GEOM_BOX,
+                rgbaColor=self.ground_rgba,
+                halfExtents=[	self.state_bound/2,
+                                self.state_bound/2,
+                                self.wall_thickness/2])
             self.ground_id = p.createMultiBody(
                 baseMass=0,	# FIXED
                 baseCollisionShapeIndex=ground_collision_id,
+                baseVisualShapeIndex=ground_visual_id,
                 basePosition=[	self.state_bound/2,
                                 0,
                                 -self.wall_thickness/2])
@@ -167,13 +187,12 @@ class NavigationObsPBEnv(gym.Env):
                 halfExtents=[	self.wall_thickness/2,
                                 self.state_bound/2,
                                 self.wall_height/2])
-            wall_visual_id = -1
-            if self._renders:
-                wall_visual_id = p.createVisualShape(
-                    p.GEOM_BOX,
-                    halfExtents=[	self.wall_thickness/2,
-                                    self.state_bound/2,
-                                    self.wall_height/2])
+            wall_visual_id = p.createVisualShape(
+                p.GEOM_BOX,
+                rgbaColor=self.wall_rgba,
+                halfExtents=[	self.wall_thickness/2,
+                                self.state_bound/2,
+                                self.wall_height/2])
             self.wall_back_id = p.createMultiBody(
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
@@ -204,15 +223,10 @@ class NavigationObsPBEnv(gym.Env):
                 basePosition=[	self.state_bound+self.wall_thickness/2,
                                 0,
                                 self.wall_height/2])
-            wall_top_visual_id = p.createVisualShape(p.GEOM_BOX,
-                halfExtents=[	self.state_bound/2,
-                                self.state_bound/2,
-                                self.wall_thickness/2],
-                rgbaColor=[1,1,1,0.1])
-            self.wall_top_id = p.createMultiBody(	# for blocking view
+            self.wall_top_id = p.createMultiBody(	# for blocking view - same as ground
                 baseMass=0,
                 baseCollisionShapeIndex=ground_collision_id,
-                baseVisualShapeIndex=wall_top_visual_id,
+                baseVisualShapeIndex=ground_visual_id,
                 basePosition=[	self.state_bound/2,
                                 0,
                                 self.wall_height+self.wall_thickness/2])
@@ -222,12 +236,11 @@ class NavigationObsPBEnv(gym.Env):
                 p.GEOM_CYLINDER,
                 radius=self._obs_radius,
                 height=self.wall_height)
-            obs_visual_id = -1
-            if self._renders:
-                obs_visual_id = p.createVisualShape(
-                    p.GEOM_CYLINDER,
-                    radius=self._obs_radius,
-                    length=self.wall_height)
+            obs_visual_id = p.createVisualShape(
+                p.GEOM_CYLINDER,
+                rgbaColor=self.obs_rgba,
+                radius=self._obs_radius,
+                length=self.wall_height)
             self.obs_id = p.createMultiBody(
                 baseMass=0,
                 baseCollisionShapeIndex=obs_collision_id,
@@ -235,20 +248,33 @@ class NavigationObsPBEnv(gym.Env):
                 basePosition=np.append(self._obs_loc, self.wall_height/2))
 
             # target
-            goal_collision_id = p.createCollisionShape(
-                p.GEOM_SPHERE,
-                radius=self._goal_radius)
-            goal_visual_id = -1
-            if self._renders:
-                goal_visual_id = p.createVisualShape(
-                    shapeType = p.GEOM_SPHERE,
-                    radius=self._goal_radius,
-                    rgbaColor=[0, 1, 0, 1])
-            self.goal_id = p.createMultiBody(
+            # goal_collision_id = p.createCollisionShape(
+            #     p.GEOM_SPHERE,
+            #     radius=self._goal_radius)
+            # goal_visual_id = p.createVisualShape(
+            #     shapeType = p.GEOM_SPHERE,
+            #     radius=self._goal_radius,
+            #     rgbaColor=self.goal_rgba)
+            # self.goal_id = p.createMultiBody(
+            #     baseMass=0,
+            #     baseCollisionShapeIndex=goal_collision_id,
+            #     baseVisualShapeIndex=goal_visual_id,
+            #     basePosition=np.append(self._goal_loc, self._goal_radius))
+
+            # Door - behind the virtual target
+            door_visual_id = p.createVisualShape(
+                p.GEOM_BOX,
+                rgbaColor=self.goal_rgba,
+                halfExtents=[	0.01,
+                                self._goal_radius,
+                                self.wall_height/2])
+            self.door_id = p.createMultiBody(
                 baseMass=0,
-                baseCollisionShapeIndex=goal_collision_id,
-                baseVisualShapeIndex=goal_visual_id,
-                basePosition=np.append(self._goal_loc, self._goal_radius))
+                baseCollisionShapeIndex=-1,
+                baseVisualShapeIndex=door_visual_id,
+                basePosition=[self.state_bound-0.01,
+                            0,
+                            self.wall_height/2])  
 
             # Set up car if visualizing in GUI
             if self._renders:
@@ -409,9 +435,11 @@ class NavigationObsPBEnv(gym.Env):
             flags=self._p.ER_NO_SEGMENTATION_MASK)
         depth = np.reshape(depth, (1, self.img_H, self.img_W))
         depth = far*near/(far - (far - near)*depth)
-        return depth
-
-        # return rgba2rgb(rgbImg)/255
+        if self.useRGB:
+            rgb = rgba2rgb(rgbImg).transpose(2,0,1)/255  # CHW
+            return np.concatenate((rgb, depth))
+        else:
+            return depth
         # return rgbImg/255
 
 

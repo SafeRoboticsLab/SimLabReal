@@ -15,6 +15,7 @@ class NavigationObsPBEnvDisc(NavigationObsPBEnv):
     def __init__(self, task={},
                         img_H=128,
                         img_W=128,
+                        useRGB=True,
                         render=True,
                         doneType='fail'):
         """
@@ -29,6 +30,7 @@ class NavigationObsPBEnvDisc(NavigationObsPBEnv):
         super(NavigationObsPBEnvDisc, self).__init__(   task=task,
                                                         img_H=img_H,
                                                         img_W=img_W,
+                                                        useRGB=useRGB,
                                                         render=render,
                                                         doneType=doneType)
 
@@ -55,8 +57,9 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     # Test single environment in GUI
-    render=True
-    env = NavigationObsPBEnvDisc(render=render, doneType='end')
+    render=False
+    useRGB=True
+    env = NavigationObsPBEnvDisc(render=render, useRGB=useRGB, doneType='end')
     print(env._renders)
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
@@ -82,11 +85,12 @@ if __name__ == '__main__':
             g_x = info['g_x']
             print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
                 t, x, y, l_x, g_x, done))
-            if render:
-                # plt.imshow(obs[0], cmap='Greys')
-                plt.imshow(obs)
-                plt.show(block=False)    # Default is a blocking call
-                plt.pause(.5)
-                plt.close()
+            if useRGB:
+                plt.imshow(obs[:3].transpose(1,2,0))
+            else:
+                plt.imshow(obs[-1], cmap='Greys')
+            plt.show(block=False)    # Default is a blocking call
+            plt.pause(.5)
+            plt.close()
             if done:
                 break

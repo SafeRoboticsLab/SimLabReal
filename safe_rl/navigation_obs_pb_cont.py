@@ -15,6 +15,7 @@ class NavigationObsPBEnvCont(NavigationObsPBEnv):
     def __init__(self, task={},
                         img_H=128,
                         img_W=128,
+                        useRGB=True,
                         render=True,
                         doneType='fail'):
         """
@@ -29,6 +30,7 @@ class NavigationObsPBEnvCont(NavigationObsPBEnv):
         super(NavigationObsPBEnvCont, self).__init__(   task=task,
                                                         img_H=img_H,
                                                         img_W=img_W,
+                                                        useRGB=useRGB,
                                                         render=render,
                                                         doneType=doneType)
 
@@ -52,7 +54,8 @@ if __name__ == '__main__':
 
     # Test single environment in GUI
     render=True
-    env = NavigationObsPBEnvCont(render=render)
+    useRGB=True
+    env = NavigationObsPBEnvCont(render=render, useRGB=useRGB)
     print(env._renders)
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
