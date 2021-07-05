@@ -87,13 +87,9 @@ class DDQN_image(DDQN):
         self.build_optimizer()
 
 
-    def update(self, addBias=False):
+    def update(self):
         """
         update: update the critic.
-
-        Args:
-            addBias (bool, optional): use biased version of value function if True.
-                Defaults to False.
 
         Returns:
             float: critic loss.
@@ -138,41 +134,34 @@ class DDQN_image(DDQN):
         #== Discounted Reach-Avoid Bellman Equation (DRABE) ==
         if self.mode == 'RA':
             expected_state_action_values = torch.zeros(self.BATCH_SIZE).float().to(self.device)
-            if addBias: # Bias version: V(s) = gamma ( max{ g(s), min{ l(s), V_diff(s') } } - max{ g(s), l(s) } ),
-                        # where V_diff(s') = V(s') + max{ g(s'), l(s') }
-                min_term = torch.min(l_x, state_value_nxt+torch.max(l_x, g_x))
-                terminal = torch.max(l_x, g_x)
-                non_terminal = torch.max(min_term, g_x) - terminal
-                expected_state_action_values[non_final_mask] = self.GAMMA * non_terminal[non_final_mask]
-                expected_state_action_values[torch.logical_not(non_final_mask)] = terminal[torch.logical_not(non_final_mask)]
-            else:
-                # Better version instead of DRABE on the paper (discussed on Nov. 18, 2020)
-                # V(s) = gamma ( max{ g(s), min{ l(s), V_better(s') } } + (1-gamma) max{ g(s), l(s) },
-                # where V_better(s') = max{ g(s'), min{ l(s'), V(s') } }
-                # Another version (discussed on Feb. 22, 2021):
-                    # we want Q(s, u) = V( f(s,u) )
-                non_terminal = torch.max(
-                    g_x[non_final_mask],
-                    torch.min(
-                        l_x[non_final_mask],
-                        state_value_nxt[non_final_mask]
-                    )
+
+            # Better version instead of DRABE on the paper (discussed on Nov. 18, 2020)
+            # V(s) = gamma ( max{ g(s), min{ l(s), V_better(s') } } + (1-gamma) max{ g(s), l(s) },
+            # where V_better(s') = max{ g(s'), min{ l(s'), V(s') } }
+            # Another version (discussed on Feb. 22, 2021):
+                # we want Q(s, u) = V( f(s,u) )
+            non_terminal = torch.max(
+                g_x[non_final_mask],
+                torch.min(
+                    l_x[non_final_mask],
+                    state_value_nxt[non_final_mask]
                 )
-                terminal = torch.max(l_x, g_x)
+            )
+            terminal = torch.max(l_x, g_x)
 
-                # normal state
-                expected_state_action_values[non_final_mask] = \
-                    non_terminal * self.GAMMA + \
-                    terminal[non_final_mask] * (1-self.GAMMA)
+            # normal state
+            expected_state_action_values[non_final_mask] = \
+                non_terminal * self.GAMMA + \
+                terminal[non_final_mask] * (1-self.GAMMA)
 
-                # terminal state
-                final_mask = torch.logical_not(non_final_mask)
-                if self.terminalType == 'g':
-                    expected_state_action_values[final_mask] = g_x[final_mask]
-                elif self.terminalType == 'max':
-                    expected_state_action_values[final_mask] = terminal[final_mask]
-                else:
-                    raise ValueError("invalid terminalType")
+            # terminal state
+            final_mask = torch.logical_not(non_final_mask)
+            if self.terminalType == 'g':
+                expected_state_action_values[final_mask] = g_x[final_mask]
+            elif self.terminalType == 'max':
+                expected_state_action_values[final_mask] = terminal[final_mask]
+            else:
+                raise ValueError("invalid terminalType")
         else: # V(s) = c(s, a) + gamma * V(s')
             expected_state_action_values = state_value_nxt * self.GAMMA + reward
 
@@ -247,7 +236,7 @@ class DDQN_image(DDQN):
                 v = self.Q_network(stateTensor)
                 v = torch.mean(v, dim=1, keepdim=True)
                 # valueTensor = valueTensor.repeat(1, 3)
-                loss = mse_loss(input=v, target=valueTensor, reduction='mean')
+                loss = mse_loss(input=v, target=valueTensor, reduction='sum')
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -284,53 +273,45 @@ class DDQN_image(DDQN):
         return np.array(lossArray)
 
 
-    def learn(  self, env, MAX_UPDATES=2000000, MAX_EP_STEPS=100,
-                warmupBuffer=True, warmupQ=False, warmupIter=10000,
-                addBias=False, doneTerminate=True, runningCostThr=None,
-                curUpdates=None, checkPeriod=50000,
-                plotFigure=True, storeFigure=False,
-                showBool=False, vmin=-1, vmax=1, numRndTraj=200,
-                storeModel=True, storeBest=False,
-                outFolder='RA', verbose=True):
+    def learn(self, env, warmupBuffer=True, warmupQ=False, warmupIter=1000,
+            MAX_UPDATES=400000, curUpdates=None, MAX_EP_STEPS=250,
+            runningCostThr=None, checkPeriod=50000, verbose=True,
+            plotFigure=True, showBool=False, vmin=-1, vmax=1, numRndTraj=200,
+            outFolder='RA', storeFigure=False, storeModel=True, storeBest=False):
         """
         learn: Learns the vlaue function.
 
         Args:
             env (gym.Env Obj.): environment.
-            MAX_UPDATES (int, optional): the maximal number of gradient updates.
-                Defaults to 2000000.
-            MAX_EP_STEPS (int, optional): the number of steps in an episode.
-                Defaults to 100.
             warmupBuffer (bool, optional): fill the replay buffer if True.
                 Defaults to True.
             warmupQ (bool, optional): train the Q-network by (l_x, g_x) if True.
                 Defaults to False.
             warmupIter (int, optional): the number of iterations in the
-                Q-network warmup. Defaults to 10000.
-            addBias (bool, optional): use biased version of value function if True.
-                Defaults to False.
-            doneTerminate (bool, optional): ends the episode when the agent
-                crosses the boundary if True. Defaults to True.
-            runningCostThr (float, optional): ends the training if the running
-                cost is smaller than the threshold. Defaults to None.
+                Q-network warmup. Defaults to 1000.
+            MAX_UPDATES (int, optional): the maximal number of gradient updates.
+                Defaults to 400000.
             curUpdates (int, optional): set the current number of updates
                 (usually used when restoring trained models). Defaults to None.
+            MAX_EP_STEPS (int, optional): the number of steps in an episode.
+                Defaults to 250.
+            runningCostThr (float, optional): ends the training if the running
+                cost is smaller than the threshold. Defaults to None.
             checkPeriod (int, optional): the period we check the performance.
                 Defaults to 50000.
+            verbose (bool, optional): output message if True. Defaults to True.
             plotFigure (bool, optional): plot figures if True. Defaults to True.
-            storeFigure (bool, optional): store figures if True. Defaults to False.
-            showBool (bool, optional): use bool value function if True.
-                Defaults to False.
+            showBool (bool, optional): use bool value if True. Defaults to False.
             vmin (float, optional): the minimal value in the colorbar. Defaults to -1.
             vmax (float, optional): the maximal value in the colorbar. Defaults to 1.
             numRndTraj (int, optional): the number of random trajectories used
                 to obtain the success ratio. Defaults to 200.
+            outFolder (str, optional): the parent folder of model/ and figure/.
+                Defaults to 'RA'.
+            storeFigure (bool, optional): store figures if True. Defaults to False.
             storeModel (bool, optional): store models if True. Defaults to True.
             storeBest (bool, optional): only store the best model if True.
                 Defaults to False.
-            outFolder (str, optional): the relative folder path with respect to
-                model/ and figure/. Defaults to 'RA'.
-            verbose (bool, optional): output message if True. Defaults to True.
 
         Returns:
             trainingRecords (np.ndarray): loss_critic for every update.
@@ -392,9 +373,9 @@ class DDQN_image(DDQN):
 
                 # Check after fixed number of gradient updates
                 if self.cntUpdate != 0 and self.cntUpdate % checkPeriod == 0:
-                    results= env.simulate_trajectories(self.Q_network,
-                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj,
-                        keepOutOf=False, toEnd=False)[1]
+                    policy = lambda obs: self.select_action(obs, explore=False)[1]
+                    results = env.simulate_trajectories(policy,
+                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False)[1]
                     success  = np.sum(results==1) / results.shape[0]
                     failure  = np.sum(results==-1)/ results.shape[0]
                     unfinish = np.sum(results==0) / results.shape[0]
@@ -420,11 +401,11 @@ class DDQN_image(DDQN):
                     if plotFigure or storeFigure:
                         self.Q_network.eval()
                         if showBool:
-                            env.visualize(self.Q_network, vmin=0,
-                                boolPlot=True, addBias=addBias)
+                            env.visualize(self.Q_network, policy, self.device,
+                                vmin=0, boolPlot=True)
                         else:
-                            env.visualize(self.Q_network, vmin=vmin,
-                                vmax=vmax, cmap='seismic', addBias=addBias)
+                            env.visualize(self.Q_network, policy, self.device,
+                                vmin=vmin, vmax=vmax, cmap='seismic')
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
                                 '{:d}.png'.format(self.cntUpdate))
@@ -435,13 +416,13 @@ class DDQN_image(DDQN):
                         plt.close()
 
                 # Perform one step of the optimization (on the target network)
-                lossC = self.update(addBias=addBias)
+                lossC = self.update()
                 trainingRecords.append(lossC)
                 self.cntUpdate += 1
                 self.updateHyperParam()
 
                 # Terminate early
-                if done and doneTerminate:
+                if done:
                     break
 
             # Rollout report

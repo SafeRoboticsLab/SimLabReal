@@ -3,8 +3,10 @@ import random
 import pybullet as pb
 from pybullet_utils import bullet_client as bc
 import gym
+import matplotlib.pyplot as plt
 from matplotlib.ticker import LinearLocator
 from abc import abstractmethod
+import torch
 
 # import os
 # os.sys.path.append(os.path.join(os.getcwd(), '.'))
@@ -96,6 +98,9 @@ class NavigationObsPBEnv(gym.Env):
 
         # Car initial x/y/theta
         self.car_init_state = np.array([0.1, 0., 0.])
+        self.visual_initial_states = [  np.array([0.1, 0., 0.]),
+                                        np.array([1.5, 0., 0.]),
+                                        np.array([1.5, 0., np.pi])]
 
         # Car dynamics
         self.state_dim = 3
@@ -303,9 +308,12 @@ class NavigationObsPBEnv(gym.Env):
         return self._get_obs(self._state)
 
 
-    def sample_state(self, sample_inside_obs=False, sample_inside_tar=True):
+    def sample_state(self, sample_inside_obs=False, sample_inside_tar=True, theta=None):
         # random sample `theta`
-        theta_rnd = 2.0 * np.pi * np.random.uniform()
+        if theta is not None:
+            theta_rnd = theta
+        else:
+            theta_rnd = 2.0 * np.pi * np.random.uniform()
 
         # random sample [`x`, `y`]
         flag = True
@@ -487,7 +495,47 @@ class NavigationObsPBEnv(gym.Env):
         return states, heuristic_v
 
 
+    def get_value(self, q_func, device, theta, nx=101, ny=101):
+        """
+        get_value: get the state values given the Q-network. We fix the heading
+            angle of the car to `theta`.
+
+        Args:
+            q_func (object): agent's Q-network.
+            device (str): agent's device.
+            theta (float): the heading angle of the car.
+            nx (int, optional): # points in x-axis. Defaults to 101.
+            ny (int, optional): # points in y-axis. Defaults to 101.
+
+        Returns:
+            np.ndarray: values
+        """
+        v = np.zeros((nx, ny))
+        it = np.nditer(v, flags=['multi_index'])
+        xs = np.linspace(self.bounds[0,0], self.bounds[0,1], nx)
+        ys = np.linspace(self.bounds[1,0], self.bounds[1,1], ny)
+        while not it.finished:
+            idx = it.multi_index
+            x = xs[idx[0]]
+            y = ys[idx[1]]
+            state = np.array([x, y, theta])
+            obs = self._get_obs(state)
+            obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
+            v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+            it.iternext()
+        return v
+
+
     def check_within_bounds(self, state):
+        """
+        check_within_bounds
+
+        Args:
+            state (np.ndarray): (x, y, yaw)
+
+        Returns:
+            bool: True if inside the environment.
+        """
         for dim, bound in enumerate(self.bounds):
             flagLow = state[dim] < bound[0]
             flagHigh = state[dim] > bound[1]
@@ -561,16 +609,328 @@ class NavigationObsPBEnv(gym.Env):
         return safety_margin
 
 
+    #== Trajectories Rollout ==
+    def simulate_one_trajectory(self, policy, T=250, toEnd=False,
+            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
+        """
+        simulate_one_trajectory: simulate the trajectory given the state or
+            randomly initialized.
+
+        Args:
+            policy (func): agent's policy.
+            T (int, optional): the maximum length of the trajectory. Defaults to 250.
+            toEnd (bool, optional): simulate the trajectory until the robot crosses
+                the boundary or not. Defaults to False.
+            state (np.ndarray, optional): if provided, set the initial state to
+                its value. Defaults to None.
+            theta (float, optional): if provided, set the theta to its value.
+                Defaults to np.pi/2.
+            sample_inside_obs (bool, optional): sampling initial states inside
+                of the obstacles or not. Defaults to True.
+            sample_inside_tar (bool, optional): sampling initial states inside
+                of the targets or not. Defaults to True.
+
+        Returns:
+            np.ndarray: states of the trajectory, of the shape (length, 3).
+            int: result.
+            float: the minimum reach-avoid value of the trajectory.
+            dictionary: extra information, (v_x, g_x, l_x, obs) along the trajectory.
+        """
+        # reset
+        if state is None:
+            _state = self.sample_state(sample_inside_obs, sample_inside_tar, theta=theta)
+        else:
+            _state = state
+        result = 0 # not finished
+        traj = []
+        observations = []
+        valueList = []
+        gxList = []
+        lxList = []
+
+        for t in range(T):
+            #= get obs, g, l
+            obs = self._get_obs(_state)
+            traj.append(_state)
+            observations.append(obs)
+            g_x = self.safety_margin(_state)
+            l_x = self.target_margin(_state)
+
+            #= add rollout record
+            if t == 0:
+                maxG = g_x
+                current = max(l_x, maxG)
+                minV = current
+            else:
+                maxG = max(maxG, g_x)
+                current = max(l_x, maxG)
+                minV = min(current, minV)
+
+            valueList.append(minV)
+            gxList.append(g_x)
+            lxList.append(l_x)
+
+            #= check the termination criterion
+            if toEnd:
+                done = not self.check_within_bounds(_state)
+                if done:
+                    if minV <= 0:
+                        result = 1
+                    else:
+                        result = -1
+                    break
+            else:
+                if g_x > 0:
+                    result = -1 # failed
+                    break
+                elif l_x <= 0:
+                    result = 1 # succeeded
+                    break
+
+            #= simulate
+            action = policy(obs)
+            w = self.getTurningRate(action)
+            _state = self.integrate_forward(_state, w)
+
+        traj = np.array(traj)
+        observations = np.array(observations)
+        info = {'valueList':valueList, 'gxList':gxList, 'lxList':lxList,
+                'observations':observations}
+        return traj, result, minV, info
+
+
+    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, toEnd=False,
+            states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
+        """
+        simulate_trajectories: simulate the trajectories. If the states are not
+            provided, we pick the initial states from the discretized state space.
+
+        Args:
+            policy (func): agent's policy.
+            num_rnd_traj ([type], optional): [description]. Defaults to None.
+            T (int, optional): the maximum length of the trajectory. Defaults to 250.
+            toEnd (bool, optional): simulate the trajectory until the robot crosses
+                the boundary or not. Defaults to False.
+            states (np.ndarray, optional): if provided, set the initial states to
+                its value. Defaults to None.
+            theta (float, optional): if provided, set the theta to its value.
+                Defaults to np.pi/2.
+            sample_inside_obs (bool, optional): sampling initial states inside
+                of the obstacles or not. Defaults to True.
+            sample_inside_tar (bool, optional): sampling initial states inside
+                of the targets or not. Defaults to True.
+
+        Returns:
+            list of np.ndarray: each element is a tuple consisting of x and y
+                positions along the trajectory.
+            np.ndarray: the binary reach-avoid outcomes.
+            np.ndarray: the minimum reach-avoid values of the trajectories.
+        """
+        assert ((num_rnd_traj is None and states is not None) or
+                (num_rnd_traj is not None and states is None) or
+                (len(states) == num_rnd_traj))
+        trajectories = []
+
+        if states is None:
+            results = np.empty(shape=(num_rnd_traj,), dtype=int)
+            minVs = np.empty(shape=(num_rnd_traj,), dtype=float)
+            for idx in range(num_rnd_traj):
+                traj, result, minV, _ = self.simulate_one_trajectory(
+                    policy, T=T, toEnd=toEnd, theta=theta,
+                    sample_inside_obs=sample_inside_obs,
+                    sample_inside_tar=sample_inside_tar)
+                trajectories.append(traj)
+                results[idx] = result
+                minVs[idx] = minV
+        else:
+            results = np.empty(shape=(len(states),), dtype=int)
+            minVs = np.empty(shape=(len(states),), dtype=float)
+            for idx, state in enumerate(states):
+                traj, result, minV, _ = self.simulate_one_trajectory(
+                    policy, T=T, state=state, toEnd=toEnd)
+                trajectories.append(traj)
+                results[idx] = result
+                minVs[idx] = minV
+
+        return trajectories, results, minVs
+
+
     #== Plotting ==
+    def visualize(  self, q_func, policy, device, rndTraj=False, num_rnd_traj=10,
+                    vmin=-1, vmax=1, nx=101, ny=101, cmap='seismic',
+                    labels=None, boolPlot=False):
+        """
+        visualize
+
+        Args:
+            q_func (object): agent's Q-network.
+            policy (func): agent's policy.
+            device (str): agent's device.
+            rndTraj (bool, optional): random initialization or not. Defaults to False.
+            num_rnd_traj (int, optional): number of states. Defaults to None.
+            vmin (int, optional): vmin in colormap. Defaults to -1.
+            vmax (int, optional): vmax in colormap. Defaults to 1.
+            nx (int, optional): # points in x-axis. Defaults to 101.
+            ny (int, optional): # points in y-axis. Defaults to 101.
+            cmap (str, optional): color map. Defaults to 'seismic'.
+            labels (list, optional): x- and y- labels. Defaults to None.
+            boolPlot (bool, optional): plot the binary values. Defaults to False.
+        """
+        thetaList = [np.pi/6, np.pi/3, np.pi/2]
+        fig = plt.figure(figsize=(12, 4))
+        ax1 = fig.add_subplot(131)
+        ax2 = fig.add_subplot(132)
+        ax3 = fig.add_subplot(133)
+        axList = [ax1, ax2, ax3]
+
+        for i, (ax, theta) in enumerate(zip(axList, thetaList)):
+            if i == len(thetaList)-1:
+                cbarPlot=True
+            else:
+                cbarPlot=False
+
+            #== Plot failure / target set ==
+            self.plot_target_failure_set(ax)
+
+            #== Plot V ==
+            self.plot_v_values( q_func, device, fig, ax, theta=theta,
+                                boolPlot=boolPlot, cbarPlot=cbarPlot,
+                                vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap)
+
+            #== Plot Trajectories ==
+            if rndTraj:
+                self.plot_trajectories( policy, ax, num_rnd_traj=num_rnd_traj,
+                    theta=theta, toEnd=False)
+            else:
+                self.plot_trajectories( policy, ax,
+                    states=self.visual_initial_states, toEnd=False)
+
+            #== Formatting ==
+            self.plot_formatting(ax, labels=labels)
+            fig.tight_layout()
+
+            ax.set_xlabel(r'$\theta={:.0f}^\circ$'.format(theta*180/np.pi), fontsize=28)
+
+
+    def plot_v_values(self, q_func, device, fig, ax, theta=np.pi/2,
+            boolPlot=False, cbarPlot=True, vmin=-1, vmax=1, nx=101, ny=101,
+            cmap='seismic'):
+        """
+        plot_v_values
+
+        Args:
+            q_func (object): agent's Q-network.
+            device (str): agent's device.
+            fig (matplotlib.figure)
+            ax (matplotlib.axes.Axes)
+            theta (float, optional): if provided, fix the car's heading angle to
+                its value. Defaults to np.pi/2.
+            boolPlot (bool, optional): plot the values in binary form.
+                Defaults to False.
+            cbarPlot (bool, optional): plot the color bar or not. Defaults to True.
+            vmin (int, optional): vmin in colormap. Defaults to -1.
+            vmax (int, optional): vmax in colormap. Defaults to 1.
+            nx (int, optional): # points in x-axis. Defaults to 101.
+            ny (int, optional): # points in y-axis. Defaults to 101.
+            cmap (str, optional): color map. Defaults to 'seismic'.
+        """
+        axStyle = self.get_axes()
+
+        #== Plot V ==
+        if theta == None:
+            theta = 2.0 * np.random.uniform() * np.pi
+        v = self.get_value(q_func, device, theta, nx, ny)
+
+        if boolPlot:
+            im = ax.imshow(v.T>0., interpolation='none', extent=axStyle[0],
+                origin="lower", cmap=cmap, zorder=-1)
+        else:
+            im = ax.imshow(v.T, interpolation='none', extent=axStyle[0], origin="lower",
+                    cmap=cmap, vmin=vmin, vmax=vmax, zorder=-1)
+            if cbarPlot:
+                cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
+                            ticks=[vmin, 0, vmax])
+                cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=16)
+
+
+    def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, toEnd=False,
+            states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
+            c='k', lw=2, zorder=2):
+        """
+        plot_trajectories: plot trajectories given the agent's Q-network.
+
+        Args:
+            policy (func): agent's policy.
+            ax (matplotlib.axes.Axes).
+            num_rnd_traj (int, optional): Defaults to None.
+            T (int, optional): the maximum length of the trajectory. Defaults to 250.
+            toEnd (bool, optional): simulate the trajectory until the robot crosses
+                the boundary or not. Defaults to False.
+            states (np.ndarray, optional): if provided, set the initial states to
+                its value. Defaults to None.
+            theta (float, optional): if provided, set the theta to its value.
+                Defaults to np.pi/2.
+            sample_inside_obs (bool, optional): sampling initial states inside
+                of the obstacles or not. Defaults to True.
+            sample_inside_tar (bool, optional): sampling initial states inside
+                of the targets or not. Defaults to True.
+            c (str, optional): color. Defaults to 'k'.
+            lw (float, optional): linewidth. Defaults to 1.5.
+            zorder (int, optional): graph layers order. Defaults to 2.
+
+        Returns:
+            np.ndarray: the binary reach-avoid outcomes.
+            np.ndarray: the minimum reach-avoid values of the trajectories.
+        """
+        assert ((num_rnd_traj is None and states is not None) or
+                (num_rnd_traj is not None and states is None) or
+                (len(states) == num_rnd_traj))
+
+        trajectories, results, minVs = self.simulate_trajectories(
+            policy, num_rnd_traj=num_rnd_traj, T=T, toEnd=toEnd,
+            states=states, theta=theta, sample_inside_obs=sample_inside_obs,
+            sample_inside_tar=sample_inside_tar)
+
+        if ax == None:
+            ax = plt.gca()
+        for traj in trajectories:
+            traj_x = traj[:,0]
+            traj_y = traj[:,1]
+            ax.scatter(traj_x[0], traj_y[0], s=48, c=c, zorder=zorder)
+            ax.plot(traj_x, traj_y, color=c,  linewidth=lw, zorder=zorder)
+
+        return results, minVs
+
+
     def plot_target_failure_set(self, ax, c_c='m', c_t='y', lw=3, zorder=0):
+        """
+        plot_target_failure_set
+
+        Args:
+            ax (matplotlib.axes.Axes).
+            c_c (str, optional): the color of constraint set boundary. Defaults to 'm'.
+            c_t (str, optional): the color of target set boundary. Defaults to 'y'.
+            lw (int, optional): the linewidth of the boundaries. Defaults to 3.
+            zorder (int, optional): the graph oder of the boundaries. Defaults to 0.
+        """
         plot_circle(self._obs_loc, self._obs_radius, ax,
             c=c_c, lw=lw, zorder=zorder)
         plot_circle(self._goal_loc, self._goal_radius, ax, c=c_t,
             lw=lw, zorder=zorder)
 
 
-    def plot_formatting(self, ax=None, labels=None, fsz=20):
+    def plot_formatting(self, ax, labels=None, fsz=20):
+        """
+        plot_formatting
+
+        Args:
+            ax (matplotlib.axes.Axes).
+            labels (list, optional): x- and y- labels. Defaults to None.
+            fsz (int, optional): font size. Defaults to 20.
+        """        
         axStyle = self.get_axes()
+        # ax.plot([0., 0.], [axStyle[0][2], axStyle[0][3]], c='k')
+        # ax.plot([axStyle[0][0], axStyle[0][1]], [0., 0.], c='k')
         #== Formatting ==
         ax.axis(axStyle[0])
         ax.set_aspect(axStyle[1])  # makes equal aspect ratio
