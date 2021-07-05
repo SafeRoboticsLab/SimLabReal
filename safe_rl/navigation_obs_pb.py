@@ -131,6 +131,11 @@ class NavigationObsPBEnv(gym.Env):
         self.action_space.seed(self.seed_val)
         np.random.seed(self.seed_val)
         random.seed(self.seed_val)
+        torch.manual_seed(self.seed_val)
+        torch.cuda.manual_seed(self.seed_val)
+        torch.cuda.manual_seed_all(self.seed_val)  # if you are using multi-GPU.
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
         # self.np_random, seed = gym.utils.seeding.np_random(seed)
         # return [seed]
 

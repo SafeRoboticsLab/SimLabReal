@@ -365,7 +365,20 @@ class DDQN_image(DDQN):
                 # Interact with env
                 s_, r, done, info = env.step(a_idx)
                 s_ = None if done else s_
+
+                # Rollout record
                 epCost += r
+                _state = info['state']
+                g_x = env.safety_margin(_state)
+                l_x = env.target_margin(_state)
+                if step_num == 0:
+                    maxG = g_x
+                    current = max(l_x, maxG)
+                    minV = current
+                else:
+                    maxG = max(maxG, g_x)
+                    current = max(l_x, maxG)
+                    minV = min(current, minV)
 
                 # Store the transition in memory
                 self.store_transition(s, a_idx, r, s_, info)
@@ -428,8 +441,10 @@ class DDQN_image(DDQN):
             # Rollout report
             runningCost = runningCost * 0.9 + epCost * 0.1
             if verbose:
-                print('\r[{:d}-{:d}]: This episode gets running/episode cost = ({:3.2f}/{:.2f}) after {:d} steps.'.format(\
-                    ep, self.cntUpdate, runningCost, epCost, step_num+1), end='')
+                print('\r[{:d}-{:d}]: reach-avoid/lagrange cost'.format(
+                    ep, self.cntUpdate), end=' ')
+                print('= ({:3.2f}/{:.2f}) after {:d} steps.'.format(
+                    minV, epCost, step_num+1), end='')
 
             # Check stopping criteria
             if runningCostThr != None:
