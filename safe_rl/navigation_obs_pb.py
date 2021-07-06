@@ -98,10 +98,13 @@ class NavigationObsPBEnv(gym.Env):
 
         # Car initial x/y/theta
         self.car_init_state = np.array([0.1, 0., 0.])
-        self.visual_initial_states = [  np.array([0.1, 0., 0.]),
-                                        np.array([1.5, 0., 0.]),
-                                        np.array([1.5, 0., np.pi])]
-
+        # self.visual_initial_states = [  np.array([0.1, 0., 0.]),
+        #                                 np.array([1.5, 0., 0.]),
+        #                                 np.array([1.5, 0., np.pi])]
+        self.visual_initial_states = np.array([ [ 0.3,  0.7],
+                                                [ 1.,  -0.5],
+                                                [ 1.5,  0. ],
+                                                [ 0.5,  0. ]])
         # Car dynamics
         self.state_dim = 3
         self.action_dim = 1
@@ -781,7 +784,7 @@ class NavigationObsPBEnv(gym.Env):
             labels (list, optional): x- and y- labels. Defaults to None.
             boolPlot (bool, optional): plot the binary values. Defaults to False.
         """
-        thetaList = [np.pi/6, np.pi/3, np.pi/2]
+        thetaList = [0, np.pi/2, np.pi]
         fig = plt.figure(figsize=(12, 4))
         ax1 = fig.add_subplot(131)
         ax2 = fig.add_subplot(132)
@@ -803,12 +806,13 @@ class NavigationObsPBEnv(gym.Env):
                                 vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap)
 
             #== Plot Trajectories ==
+            thetas = theta*np.ones(shape=(self.visual_initial_states.shape[0], 1))
+            states = np.concatenate((self.visual_initial_states, thetas), axis=1)
             if rndTraj:
                 self.plot_trajectories( policy, ax, num_rnd_traj=num_rnd_traj,
                     theta=theta, toEnd=False)
             else:
-                self.plot_trajectories( policy, ax,
-                    states=self.visual_initial_states, toEnd=False)
+                self.plot_trajectories( policy, ax, states=states, toEnd=False)
 
             #== Formatting ==
             self.plot_formatting(ax, labels=labels)
@@ -852,7 +856,7 @@ class NavigationObsPBEnv(gym.Env):
         else:
             im = ax.imshow(v.T, interpolation='none', extent=axStyle[0], origin="lower",
                     cmap=cmap, vmin=vmin, vmax=vmax, zorder=-1)
-            CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,
+            CS = ax.contour(xs, ys, v.T, levels=[0], colors='g', linewidths=2,
                             linestyles='dashed')
             if cbarPlot:
                 cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
