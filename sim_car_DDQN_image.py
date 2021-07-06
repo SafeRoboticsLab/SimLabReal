@@ -6,7 +6,9 @@
 # problem. We use this script to generate Fig. 5 in the paper.
 
 # Examples:
-    # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999
+    # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999 -mc 50000
+    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 1000 -cp 200 -ut 10 -nx 21 -sm -n 9999-sm
+# python3 pacra/sim_car_DDQN_image.py -sf -mu 1000 -cp 200 -ut 10 -nx 21 -sm -n 999-sm
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -25,8 +27,8 @@ timestr = time.strftime("%Y-%m-%d-%H_%M")
 #= AGENT
 from RARL.utils import save_obj
 from RARL.DDQN_image import DDQN_image
-from RARL.DDQN import Transition
-from RARL.config import dqnConfig
+# from RARL.DDQN import Transition
+from RARL.config import dqnImageConfig
 
 #= ENV
 from safe_rl.navigation_obs_pb_disc import NavigationObsPBEnvDisc
@@ -63,14 +65,20 @@ parser.add_argument("-a",   "--annealing",      help="gamma annealing",
     action="store_true")
 parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
     action="store_true")
+parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
+    action="store_true")
 parser.add_argument("-arc", "--architecture",   help="NN architecture",
-    default=[100, 100],  nargs="*", type=int)
+    default=[100, 100],     nargs="*", type=int)
+parser.add_argument("-nch", "--n_channel",      help="NN architecture",
+    default=[16, 32, 64],   nargs="*", type=int)
+parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
+    default=[5, 5, 3],      nargs="*", type=int)
 parser.add_argument("-lr",  "--learningRate",   help="learning rate",
     default=1e-3,   type=float)
 parser.add_argument("-g",   "--gamma",          help="contraction coeff.",
-    default=0.999,    type=float)
+    default=0.9999, type=float)
 parser.add_argument("-act", "--actType",        help="activation type",
-    default='Tanh', type=str)
+    default='ReLU', type=str)
 
 # RL type
 parser.add_argument("-m",   "--mode",           help="mode",
@@ -80,7 +88,7 @@ parser.add_argument("-tt",  "--terminalType",   help="terminal value",
 
 # file
 parser.add_argument("-nx",  "--nx",             help="check period",
-    default=21, type=int)
+    default=101, type=int)
 parser.add_argument("-st",  "--showTime",       help="show timestr",
     action="store_true")
 parser.add_argument("-n",   "--name",           help="extra name",
@@ -206,10 +214,10 @@ else:
     EPS_RESET_PERIOD = maxUpdates
 print(EPS_PERIOD, EPS_RESET_PERIOD)
 
-CONFIG = dqnConfig(
-    DEVICE=device,
+CONFIG = dqnImageConfig(
     ENV_NAME=env_name,
-    SEED=0,
+    DEVICE=device,
+    SEED=args.randomSeed,
     MAX_UPDATES=maxUpdates,
     MAX_EP_STEPS=maxSteps,
     BATCH_SIZE=64,
@@ -222,19 +230,26 @@ CONFIG = dqnConfig(
     EPS_PERIOD=EPS_PERIOD,
     EPS_DECAY=0.6,
     EPS_RESET_PERIOD=EPS_RESET_PERIOD,
-    LR_C=args.learningRate ,
+    LR_C=args.learningRate,
     LR_C_PERIOD=updatePeriod,
     LR_C_DECAY=0.8,
-    MAX_MODEL=50)
+    MAX_MODEL=50,
+    N_CHANNEL=args.n_channel, 
+    KERNEL_SZ=args.kernel_sz, 
+    USE_SM=args.softmax, 
+    USE_BN=args.batch_norm)
 
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
 
 dimList = CONFIG.ARCHITECTURE + [actionNum]
-kernel_sz = [5, 5]
-n_channel = [3, 6, 16]
+kernel_sz = args.kernel_sz
+n_channel = [env.observation_space.shape[0]] + args.n_channel
 agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
-            terminalType=args.terminalType, use_sm=args.softmax)
+            terminalType=args.terminalType)
+pytorch_total_params = sum(
+    p.numel() for p in agent.Q_network.parameters() if p.requires_grad)
+print('Total parameters: {}'.format(pytorch_total_params))
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.Q_network.parameters()).is_cuda)
 

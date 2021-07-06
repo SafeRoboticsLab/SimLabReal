@@ -141,7 +141,8 @@ class ConvNet(nn.Module):
                     z_mlp_dim=0,
                     img_size=128,
                     verbose=True,
-                    use_sm=True
+                    use_sm=True,
+                    use_bn=True
     ):
 
         super(ConvNet, self).__init__()
@@ -175,16 +176,27 @@ class ConvNet(nn.Module):
             else:
                 in_channels = output_n_channel[i-1]
 
-            module = nn.Sequential( OrderedDict([
-                ('conv_1', nn.Conv2d(
-                            in_channels=in_channels,
-                            out_channels=out_channels,
-                            kernel_size=kernel_size,
-                            stride=stride,
-                            padding=padding)),
-                ('batch_norm_1', nn.BatchNorm2d(num_features=out_channels)),
-                ('activation_1', nn.ReLU())
-            ]))
+            # module = nn.Sequential( OrderedDict([
+            #     ('conv_1', nn.Conv2d(
+            #                 in_channels=in_channels,
+            #                 out_channels=out_channels,
+            #                 kernel_size=kernel_size,
+            #                 stride=stride,
+            #                 padding=padding)),
+            #     ('batch_norm_1', nn.BatchNorm2d(num_features=out_channels)),
+            #     ('activation_1', nn.ReLU())
+            # ]))
+            module = nn.Sequential()
+            module.add_module("conv_1", nn.Conv2d(  in_channels=in_channels,
+                                                    out_channels=out_channels,
+                                                    kernel_size=kernel_size,
+                                                    stride=stride,
+                                                    padding=padding)
+            )
+            if use_bn:
+                module.add_module('bn_1', nn.BatchNorm2d(num_features=out_channels))
+            module.add_module('act_1', nn.ReLU())
+
             self.moduleList.append(module)
             height = conv2d_size_out(height, kernel_size, stride, padding)
             width  = conv2d_size_out(width,  kernel_size, stride, padding)
@@ -214,20 +226,20 @@ class ConvNet(nn.Module):
 
             module = nn.Sequential()
             mlp = nn.Linear(in_features, out_features, bias=True)
-            module.add_module("linear1", mlp)
+            module.add_module("linear_1", mlp)
             if i == len(mlp_dimList)-1:
                 actType = mlp_output_act
             else:
                 actType = mlp_act
 
             if actType == 'Sin':
-                module.add_module("activation1", Sin())
+                module.add_module("act_1", Sin())
             elif actType == 'Tanh':
-                module.add_module("activation1", nn.Tanh())
+                module.add_module("act_1", nn.Tanh())
             elif actType == 'ReLU':
-                module.add_module("activation1", nn.ReLU())
+                module.add_module("act_1", nn.ReLU())
             elif actType == 'Identity':
-                module.add_module("activation1", nn.Identity())
+                module.add_module("act_1", nn.Identity())
             else:
                 raise ValueError('Activation ({:s}) is not allowed!'.format(actType))
             self.moduleList.append(module)

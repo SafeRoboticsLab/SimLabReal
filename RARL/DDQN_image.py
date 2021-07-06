@@ -23,7 +23,7 @@ from .DDQN import DDQN, Transition
 
 class DDQN_image(DDQN):
     def __init__(self, CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
-            mode='RA', terminalType='g', verbose=True, use_sm=True):
+            mode='RA', terminalType='g', verbose=True):
         """
         __init__
 
@@ -52,14 +52,16 @@ class DDQN_image(DDQN):
         self.img_sz = img_sz
         self.kernel_sz = kernel_sz
         self.n_channel = n_channel
+        self.use_bn = CONFIG.USE_BN
+        self.use_sm = CONFIG.USE_SM
         self.actType = CONFIG.ACTIVATION
         self.build_network(dimList, img_sz, kernel_sz, n_channel, self.actType,
-                use_sm, verbose)
+                self.use_sm, self.use_bn, verbose)
         print("DDQN: mode-{}; terminalType-{}".format(self.mode, self.terminalType))
 
 
     def build_network(self, dimList, img_sz, kernel_sz, n_channel,
-            actType='Tanh', use_sm=True, verbose=True):
+            actType='Tanh', use_sm=True, use_bn=False, verbose=True):
         """
         build_network [summary]
 
@@ -70,6 +72,8 @@ class DDQN_image(DDQN):
             n_channel (np.ndarray): the first element is the input n_channel and the
                 rest is the number of output channels of each conv layer.
             actType (str, optional): activation function. Defaults to 'Tanh'.
+            use_sm (bool, optional): use spatial softmax or not. Defaults to True.
+            use_bn (bool, optional): use batch normalization or not. Defaults to False.
             verbose (bool, optional): print or not. Defaults to True.
         """
         self.Q_network = ConvNet(   mlp_dimList=dimList,
@@ -80,6 +84,7 @@ class DDQN_image(DDQN):
                                     mlp_output_act='Identity',
                                     img_size=img_sz,
                                     use_sm=use_sm,
+                                    use_bn=use_bn,
                                     verbose=verbose)
         self.Q_network.to(self.device)
         self.target_network = copy.deepcopy(self.Q_network)
