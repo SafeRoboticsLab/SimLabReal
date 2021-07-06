@@ -7,8 +7,7 @@
 
 # Examples:
     # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 1000 -cp 200 -ut 10 -nx 21 -sm -n 9999-sm
-# python3 pacra/sim_car_DDQN_image.py -sf -mu 1000 -cp 200 -ut 10 -nx 21 -sm -n 999-sm
+    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm -mc 1000 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -56,7 +55,7 @@ parser.add_argument("-mu",  "--maxUpdates",     help="maximal #gradient updates"
 parser.add_argument("-ut",  "--updateTimes",    help="hyper-param. update times",
     default=20,     type=int)
 parser.add_argument("-mc",  "--memoryCapacity", help="memoryCapacity",
-    default=10000,  type=int)
+    default=50000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",    help="check period",
     default=40000,  type=int)
 
@@ -289,7 +288,7 @@ if args.warmup:
 trainRecords, trainProgress = agent.learn(
     env, warmupBuffer=True, warmupQ=False,
     MAX_UPDATES=maxUpdates, MAX_EP_STEPS=maxSteps,
-    vmin=vmin, vmax=vmax, numRndTraj=100,
+    vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
 
@@ -332,13 +331,12 @@ if args.plotFigure or args.storeFigure:
     # endregion
 
     # region: value_rollout_action
-    agent.restore(args.maxUpdates, outFolder)
-    policy = lambda obs: agent.select_action(obs, explore=False)[1]
-
     # idx = np.argmax(trainProgress[:, 0]) + 1
     # successRate = np.amax(trainProgress[:, 0])
     # print('We pick model with success rate-{:.3f}'.format(successRate))
-    # agent.restore(idx*args.checkPeriod, outFolder)
+    idx = trainProgress.shape[0]
+    agent.restore(idx*args.checkPeriod, outFolder)
+    policy = lambda obs: agent.select_action(obs, explore=False)[1]
 
     nx = args.nx
     ny = nx
@@ -385,7 +383,7 @@ if args.plotFigure or args.storeFigure:
 
     #= Value
     ax = axes[0]
-    v = env.get_value(agent.Q_network, agent.device, theta=0, nx=nx, ny=ny)
+    v, xs, ys = env.get_value(agent.Q_network, agent.device, theta=0, nx=nx, ny=ny)
     im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
         origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
     CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,

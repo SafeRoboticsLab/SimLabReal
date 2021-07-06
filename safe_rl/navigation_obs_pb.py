@@ -528,7 +528,7 @@ class NavigationObsPBEnv(gym.Env):
             obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
             v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
             it.iternext()
-        return v
+        return v, xs, ys
 
 
     def check_within_bounds(self, state):
@@ -844,7 +844,7 @@ class NavigationObsPBEnv(gym.Env):
         #== Plot V ==
         if theta == None:
             theta = 2.0 * np.random.uniform() * np.pi
-        v = self.get_value(q_func, device, theta, nx, ny)
+        v, xs, ys = self.get_value(q_func, device, theta, nx, ny)
 
         if boolPlot:
             im = ax.imshow(v.T>0., interpolation='none', extent=axStyle[0],
@@ -852,6 +852,8 @@ class NavigationObsPBEnv(gym.Env):
         else:
             im = ax.imshow(v.T, interpolation='none', extent=axStyle[0], origin="lower",
                     cmap=cmap, vmin=vmin, vmax=vmax, zorder=-1)
+            CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,
+                            linestyles='dashed')
             if cbarPlot:
                 cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
                             ticks=[vmin, 0, vmax])
