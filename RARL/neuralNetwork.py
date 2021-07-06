@@ -182,7 +182,7 @@ class ConvNet(nn.Module):
                             kernel_size=kernel_size,
                             stride=stride,
                             padding=padding)),
-                ('batch_norm_1', nn.BatchNorm2d(num_features=out_channels)),
+                # ('batch_norm_1', nn.BatchNorm2d(num_features=out_channels)),
                 ('activation_1', nn.ReLU())
             ]))
             self.moduleList.append(module)

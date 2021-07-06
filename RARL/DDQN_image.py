@@ -83,6 +83,7 @@ class DDQN_image(DDQN):
                                     verbose=verbose)
         self.Q_network.to(self.device)
         self.target_network = copy.deepcopy(self.Q_network)
+        print('Num of parameters in state encoder: %d' % sum(p.numel() for p in self.Q_network.parameters() if p.requires_grad))
 
         self.build_optimizer()
 

@@ -113,9 +113,8 @@ print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
 
-
 #== Environment ==
-render=False
+render = False
 img_sz = 48
 env = NavigationObsPBEnvDisc(render=render, img_H=img_sz, img_W=img_sz,
         doneType=args.doneType)
@@ -231,8 +230,10 @@ CONFIG = dqnConfig(
 #     if key[:1] != '_': print(key, value)
 
 dimList = CONFIG.ARCHITECTURE + [actionNum]
-kernel_sz = [5, 5]
-n_channel = [3, 6, 16]
+# kernel_sz = [5, 5]
+kernel_sz = [5, 5, 3]
+# n_channel = [3, 6, 16]
+n_channel = [3, 16, 32, 64]
 agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
             terminalType=args.terminalType, use_sm=args.softmax)
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
