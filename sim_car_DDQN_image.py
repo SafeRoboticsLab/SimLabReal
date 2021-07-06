@@ -6,7 +6,8 @@
 # problem. We use this script to generate Fig. 5 in the paper.
 
 # Examples:
-    # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999
+    # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999 -mc 50000
+    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm -mc 1000 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -25,8 +26,8 @@ timestr = time.strftime("%Y-%m-%d-%H_%M")
 #= AGENT
 from RARL.utils import save_obj
 from RARL.DDQN_image import DDQN_image
-from RARL.DDQN import Transition
-from RARL.config import dqnConfig
+# from RARL.DDQN import Transition
+from RARL.config import dqnImageConfig
 
 #= ENV
 from safe_rl.navigation_obs_pb_disc import NavigationObsPBEnvDisc
@@ -54,7 +55,7 @@ parser.add_argument("-mu",  "--maxUpdates",     help="maximal #gradient updates"
 parser.add_argument("-ut",  "--updateTimes",    help="hyper-param. update times",
     default=20,     type=int)
 parser.add_argument("-mc",  "--memoryCapacity", help="memoryCapacity",
-    default=10000,  type=int)
+    default=50000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",    help="check period",
     default=40000,  type=int)
 
@@ -63,14 +64,20 @@ parser.add_argument("-a",   "--annealing",      help="gamma annealing",
     action="store_true")
 parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
     action="store_true")
+parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
+    action="store_true")
 parser.add_argument("-arc", "--architecture",   help="NN architecture",
-    default=[100, 100],  nargs="*", type=int)
+    default=[100, 100],     nargs="*", type=int)
+parser.add_argument("-nch", "--n_channel",      help="NN architecture",
+    default=[16, 32, 64],   nargs="*", type=int)
+parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
+    default=[5, 5, 3],      nargs="*", type=int)
 parser.add_argument("-lr",  "--learningRate",   help="learning rate",
     default=1e-3,   type=float)
 parser.add_argument("-g",   "--gamma",          help="contraction coeff.",
-    default=0.999,    type=float)
+    default=0.9999, type=float)
 parser.add_argument("-act", "--actType",        help="activation type",
-    default='Tanh', type=str)
+    default='ReLU', type=str)
 
 # RL type
 parser.add_argument("-m",   "--mode",           help="mode",
@@ -80,7 +87,7 @@ parser.add_argument("-tt",  "--terminalType",   help="terminal value",
 
 # file
 parser.add_argument("-nx",  "--nx",             help="check period",
-    default=21, type=int)
+    default=101, type=int)
 parser.add_argument("-st",  "--showTime",       help="show timestr",
     action="store_true")
 parser.add_argument("-n",   "--name",           help="extra name",
@@ -205,10 +212,10 @@ else:
     EPS_RESET_PERIOD = maxUpdates
 print(EPS_PERIOD, EPS_RESET_PERIOD)
 
-CONFIG = dqnConfig(
-    DEVICE=device,
+CONFIG = dqnImageConfig(
     ENV_NAME=env_name,
-    SEED=0,
+    DEVICE=device,
+    SEED=args.randomSeed,
     MAX_UPDATES=maxUpdates,
     MAX_EP_STEPS=maxSteps,
     BATCH_SIZE=64,
@@ -221,21 +228,26 @@ CONFIG = dqnConfig(
     EPS_PERIOD=EPS_PERIOD,
     EPS_DECAY=0.6,
     EPS_RESET_PERIOD=EPS_RESET_PERIOD,
-    LR_C=args.learningRate ,
+    LR_C=args.learningRate,
     LR_C_PERIOD=updatePeriod,
     LR_C_DECAY=0.8,
-    MAX_MODEL=50)
+    MAX_MODEL=50,
+    N_CHANNEL=args.n_channel, 
+    KERNEL_SZ=args.kernel_sz, 
+    USE_SM=args.softmax, 
+    USE_BN=args.batch_norm)
 
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
 
 dimList = CONFIG.ARCHITECTURE + [actionNum]
-# kernel_sz = [5, 5]
-kernel_sz = [5, 5, 3]
-# n_channel = [3, 6, 16]
-n_channel = [3, 16, 32, 64]
+kernel_sz = args.kernel_sz
+n_channel = [env.observation_space.shape[0]] + args.n_channel
 agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
-            terminalType=args.terminalType, use_sm=args.softmax)
+            terminalType=args.terminalType)
+pytorch_total_params = sum(
+    p.numel() for p in agent.Q_network.parameters() if p.requires_grad)
+print('Total parameters: {}'.format(pytorch_total_params))
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.Q_network.parameters()).is_cuda)
 
@@ -275,7 +287,7 @@ if args.warmup:
 trainRecords, trainProgress = agent.learn(
     env, warmupBuffer=True, warmupQ=False,
     MAX_UPDATES=maxUpdates, MAX_EP_STEPS=maxSteps,
-    vmin=vmin, vmax=vmax, numRndTraj=100,
+    vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
 
@@ -318,13 +330,12 @@ if args.plotFigure or args.storeFigure:
     # endregion
 
     # region: value_rollout_action
-    agent.restore(args.maxUpdates, outFolder)
-    policy = lambda obs: agent.select_action(obs, explore=False)[1]
-
     # idx = np.argmax(trainProgress[:, 0]) + 1
     # successRate = np.amax(trainProgress[:, 0])
     # print('We pick model with success rate-{:.3f}'.format(successRate))
-    # agent.restore(idx*args.checkPeriod, outFolder)
+    idx = trainProgress.shape[0]
+    agent.restore(idx*args.checkPeriod, outFolder)
+    policy = lambda obs: agent.select_action(obs, explore=False)[1]
 
     nx = args.nx
     ny = nx
@@ -371,9 +382,9 @@ if args.plotFigure or args.storeFigure:
 
     #= Value
     ax = axes[0]
-    v = env.get_value(agent.Q_network, agent.device, theta=0, nx=nx, ny=ny)
+    v, xs, ys = env.get_value(agent.Q_network, agent.device, theta=0, nx=nx, ny=ny)
     im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=vmin, vmax=vmax, zorder=-1)
+        origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
     CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,
         linestyles='dashed')
     ax.set_xlabel('Value', fontsize=24)
