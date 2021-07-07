@@ -46,7 +46,7 @@ class NavigationObsPBEnv(gym.Env):
     Right now there is a single obstacle at the center of the map. Info from
         step() stores distance to obstacle boundary (g) and distance to goal (l)
     """
-    def __init__(self, task={},
+    def __init__(self,  task={},
                         img_H=128,
                         img_W=128,
                         useRGB=True,
@@ -288,7 +288,7 @@ class NavigationObsPBEnv(gym.Env):
                 baseCollisionShapeIndex=-1,
                 baseVisualShapeIndex=door_visual_id,
                 basePosition=[self.state_bound-0.01,
-                            0,
+                            self._goal_loc[1],
                             self.wall_height/2])
 
             # Set up car if visualizing in GUI
@@ -466,6 +466,12 @@ class NavigationObsPBEnv(gym.Env):
         else:
             return depth
         # return rgbImg/255
+
+
+    def set_visual_initial_states(self, states):
+        assert states.shape[1] == 2 or states.shape[1] == 3,\
+            'The shape of states is not correct, the second dim should be 2 or 3.'
+        self.visual_initial_states = states
 
 
     #== GETTER ==
@@ -784,7 +790,7 @@ class NavigationObsPBEnv(gym.Env):
             labels (list, optional): x- and y- labels. Defaults to None.
             boolPlot (bool, optional): plot the binary values. Defaults to False.
         """
-        thetaList = [0, np.pi/2, np.pi]
+        thetaList = [np.pi, np.pi/2, 0]
         fig = plt.figure(figsize=(12, 4))
         ax1 = fig.add_subplot(131)
         ax2 = fig.add_subplot(132)
