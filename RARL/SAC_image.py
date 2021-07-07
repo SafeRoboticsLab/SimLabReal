@@ -14,11 +14,12 @@ import matplotlib.pyplot as plt
 import os
 import time
 
-from .model import GaussianPolicy
-from .SAC import SAC, Transition
+from .model import SACPiNetwork, SACTwinnedQNetwork
+from .ActorCritic import ActorCritic, Transition
+import copy
 
-class SAC_image(SAC):
-    def __init__(self, CONFIG, actionSpace, dimLists, terminalType='g', verbose=True):
+class SAC_image(ActorCritic):
+    def __init__(self, CONFIG, terminalType='g', verbose=True):
         """
         __init__: initialization.
 
@@ -30,13 +31,14 @@ class SAC_image(SAC):
                 Defaults to ['Tanh', 'Tanh'].
             verbose (bool, optional): print info or not. Defaults to True.
         """
-        super(SAC_image, self).__init__('SAC_image', CONFIG, actionSpace)
+        super(SAC_image, self).__init__('SAC', CONFIG)
+        self.CONFIG = CONFIG
 
         #= alpha-related hyper-parameters
         self.init_alpha = CONFIG.ALPHA
         self.LEARN_ALPHA = CONFIG.LEARN_ALPHA
         self.log_alpha = torch.tensor(np.log(self.init_alpha)).to(self.device)
-        self.target_entropy = -dimLists[1][-1]
+        self.target_entropy = self.actionDim    #?
         self.LR_Al = CONFIG.LR_Al
         self.LR_Al_PERIOD = CONFIG.LR_Al_PERIOD
         self.LR_Al_DECAY = CONFIG.LR_Al_DECAY
@@ -48,40 +50,58 @@ class SAC_image(SAC):
         else:
             print("SAC with fixed alpha = {:.1e}".format(self.init_alpha))
 
+        #
+        self.use_RA = CONFIG.USE_RA
+
         #= critic/actor-related hyper-parameters
-        assert dimLists is not None, "Define the architectures"
-        self.dimListCritic = dimLists[0]
-        self.dimListActor = dimLists[1]
+        self.mlp_dim_actor = CONFIG.MLP_DIM[0]
+        self.mlp_dim_critic = CONFIG.MLP_DIM[1]
+        self.img_sz = CONFIG.IMG_SZ
+        self.kernel_sz = CONFIG.KERNEL_SIZE
+        self.n_channel = CONFIG.N_CHANNEL
+        self.use_bn = CONFIG.USE_BN
+        self.use_sm = CONFIG.USE_SM
         self.actType = CONFIG.ACTIVATION
-        self.terminalType = terminalType
-        self.build_network(dimLists, self.actType, verbose=verbose)
+        self.build_network(verbose=verbose)
 
 
-    def build_actor(self, dimListActor, actType='Tanh', verbose=True):
-        self.actor = GaussianPolicy(dimListActor, self.actionSpace,
-            actType=actType, device=self.device, verbose=verbose)
-
-
-    def build_optimizer(self, verbose=True):
-        self.criticOptimizer = Adam(self.critic.parameters(), lr=self.LR_C)
-        self.actorOptimizer = Adam(self.actor.parameters(), lr=self.LR_A)
-
-        self.criticScheduler = lr_scheduler.StepLR(self.criticOptimizer,
-            step_size=self.LR_C_PERIOD, gamma=self.LR_C_DECAY)
-        self.actorScheduler = lr_scheduler.StepLR(self.actorOptimizer,
-            step_size=self.LR_A_PERIOD, gamma=self.LR_A_DECAY)
+    def build_network(self, verbose=True):
+        """
+        Overriding ActorCritic
+        """
+        """
+        build_network [summary]
+        Args:
+        """
         
-        if self.LEARN_ALPHA:
-            if verbose:
-                print("Make log_alpha learnable.")
-            self.log_alpha.requires_grad = True
-            self.log_alphaOptimizer = Adam([self.log_alpha], lr=self.LR_Al)
-            self.log_alphaScheduler = lr_scheduler.StepLR(
-                self.log_alphaOptimizer,
-                step_size=self.LR_Al_PERIOD, gamma=self.LR_Al_DECAY)
+        # Set up NN
+        self.actor = SACPiNetwork(input_n_channel=3,
+                                  mlp_dim=self.mlp_dim_actor,
+                                  actionDim=self.actionDim,
+                                  actionMag=self.actionMag,
+                                  actType=self.actType,
+                                  img_sz=self.img_sz,
+                                  kernel_sz=self.kernel_sz,
+                                  n_channel=self.n_channel,
+                                  device=self.device,
+                                  verbose=verbose
+                                  )
+        self.critic = SACTwinnedQNetwork(input_n_channel=3,
+                                        mlp_dim=self.mlp_dim_critic,
+                                        actionDim=self.actionDim,
+                                        actType=self.actType,
+                                        img_sz=self.img_sz,
+                                        kernel_sz=self.kernel_sz,
+                                        n_channel=self.n_channel,
+                                        device=self.device,
+                                        verbose=verbose)
+        self.target = copy.deepcopy(self.critic)
 
-        self.max_grad_norm = .1
-        self.cntUpdate = 0
+        # Tie weights for conv layers
+        self.actor.encoder.copy_conv_weights_from(self.critic.encoder)
+
+        # Set up optimizer
+        self.build_optimizer()  # from SAC
 
 
     def reset_alpha(self):
@@ -179,7 +199,7 @@ class SAC_image(SAC):
 
     def update_critic(self, batch):
 
-        non_final_mask, non_final_state_nxt, state, action, _, g_x, l_x = \
+        non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x = \
             self.unpack_batch(batch)
         self.critic.train()
         self.criticTarget.eval()
@@ -189,28 +209,42 @@ class SAC_image(SAC):
         q1, q2 = self.critic(state, action)  # Used to compute loss (non-target part).
 
         #== placeholder for target ==
-        target_q = torch.zeros(self.BATCH_SIZE).float().to(self.device)
+        y = torch.zeros(self.BATCH_SIZE).float().to(self.device)
 
         #== compute actor next_actions and feed to criticTarget ==
         with torch.no_grad():
-            next_actions, _ = self.actor.sample(non_final_state_nxt)
+            next_actions, next_log_prob = self.actor.sample(non_final_state_nxt)
             next_q1, next_q2 = self.criticTarget(non_final_state_nxt, next_actions)
-            q_max = torch.max(next_q1, next_q2).view(-1)  # max because we are doing reach-avoid.
+            
+            if self.use_RA: # use max for reach-avoid
+                q_max = torch.max(next_q1, next_q2).view(-1)
+            else:
+                q_min = torch.min(next_q1, next_q2).view(-1)
 
-        target_q[non_final_mask] =  (
-            (1.0 - self.GAMMA) * torch.max(l_x[non_final_mask], g_x[non_final_mask]) +
-            self.GAMMA * torch.max( g_x[non_final_mask], torch.min(l_x[non_final_mask], q_max)))
-        if self.terminalType == 'g':
-            target_q[torch.logical_not(non_final_mask)] = g_x[torch.logical_not(non_final_mask)]
-        elif self.terminalType == 'max':
-            target_q[torch.logical_not(non_final_mask)] = torch.max(
-                l_x[torch.logical_not(non_final_mask)], g_x[torch.logical_not(non_final_mask)])
+        if self.use_RA:
+            y[non_final_mask] =  (
+                (1.0 - self.GAMMA) * torch.max(l_x[non_final_mask], g_x[non_final_mask]) +
+                self.GAMMA * torch.max( g_x[non_final_mask], torch.min(l_x[non_final_mask], q_max)))
+            if self.terminalType == 'g':
+                y[torch.logical_not(non_final_mask)] = g_x[torch.logical_not(non_final_mask)]
+            elif self.terminalType == 'max':
+                y[torch.logical_not(non_final_mask)] = torch.max(
+                    l_x[torch.logical_not(non_final_mask)], g_x[torch.logical_not(non_final_mask)])
+            else:
+                raise ValueError("invalid terminalType")
+
         else:
-            raise ValueError("invalid terminalType")
+            target_q = q_min - self.alpha * next_log_prob
+            y = reward
+            y[non_final_mask] += self.GAMMA*target_q[non_final_mask]
+            # target_value = min_target_q - self._alpha * target_log_pi
+            # disc = self.discount ** self.n_step_return
+            # y = (self.reward_scale * samples_r.return_ +
+            #     (1 - samples_r.done_n.float()) * disc * target_value)
 
         #== MSE update for both Q1 and Q2 ==
-        loss_q1 = mse_loss(input=q1.view(-1), target=target_q)
-        loss_q2 = mse_loss(input=q2.view(-1), target=target_q)
+        loss_q1 = mse_loss(input=q1.view(-1), target=y)
+        loss_q2 = mse_loss(input=q2.view(-1), target=y)
         loss_q = loss_q1 + loss_q2
 
         #== backpropagation ==
@@ -222,6 +256,9 @@ class SAC_image(SAC):
 
 
     def update_actor(self, batch):
+        """
+        Use detach_encoder=True to not update conv layers
+        """
 
         _, _, state, _, _, _, _ = self.unpack_batch(batch)
 
@@ -230,15 +267,19 @@ class SAC_image(SAC):
         for p in self.critic.parameters():
             p.requires_grad = False
 
-        action_sample, log_prob = self.actor.sample(state)
-        q_pi_1, q_pi_2 = self.critic(state, action_sample)
-        q_pi = torch.max(q_pi_1, q_pi_2)
+        action_sample, log_prob = self.actor.sample(state, detach_encoder=True)
+        q_pi_1, q_pi_2 = self.critic(state, action_sample, detach_encoder=True)
+
+        if self.use_RA:
+            q_pi = torch.max(q_pi_1, q_pi_2)    
+        else:
+            q_pi = torch.min(q_pi_1, q_pi_2)
 
         # Obj: min_theta E[ Q(s, pi_theta(s, \xi)) + alpha * log(pi_theta(s, \xi))]
         # loss_pi = (q_pi - self.alpha * log_prob.view(-1)).mean()
         loss_entropy = log_prob.view(-1).mean()
         loss_q_eval = q_pi.mean()
-        loss_pi = loss_q_eval + self.alpha * loss_entropy
+        loss_pi = -loss_q_eval + self.alpha * loss_entropy  #! should maximize loss_q_eval, right?
         self.actorOptimizer.zero_grad()
         loss_pi.backward()
         # clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
@@ -262,7 +303,7 @@ class SAC_image(SAC):
 
     def update(self, timer, update_period=2):
         if len(self.memory) < self.start_updates:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
         #== EXPERIENCE REPLAY ==
         transitions = self.memory.sample(self.BATCH_SIZE)
@@ -354,9 +395,8 @@ class SAC_image(SAC):
                     # else:
                     #     actor_sim = self.actor
                     actor_sim = self.actor
-                    results= env.simulate_trajectories(actor_sim,
-                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj,
-                        keepOutOf=False, toEnd=False)[1]
+                    results = env.simulate_trajectories(actor_sim,
+                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False)[1]
                     success  = np.sum(results==1) / numRndTraj
                     failure  = np.sum(results==-1)/ numRndTraj
                     unfinish = np.sum(results==0) / numRndTraj
