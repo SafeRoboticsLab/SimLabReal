@@ -51,7 +51,8 @@ class NavigationObsPBEnv(gym.Env):
                         img_W=128,
                         useRGB=True,
                         render=True,
-                        doneType='fail'):
+                        doneType='fail',
+                        sample_inside_obs=False):
         """
         __init__: initialization
 
@@ -74,7 +75,7 @@ class NavigationObsPBEnv(gym.Env):
         self.wall_thickness = 0.05
         self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
         self.camera_height = 0.2	# cannot be too low, otherwise bad depth
-        self.sample_inside_obs=False
+        self.sample_inside_obs=sample_inside_obs
         self.sample_inside_tar=True
 
         # Set up observation and action space for Gym
