@@ -91,16 +91,17 @@ class NavigationObsPBEnv(gym.Env):
             shape=(num_img_channel, img_H, img_W))
 
         # Color
-        self.ground_rgba = [0.7, 0.7, 0.7, 1.0]
-        self.wall_rgba = [0.5, 0.5, 0.5, 1.0]
+        self.ground_rgba = [0.9, 0.9, 0.9, 1.0]
+        self.left_wall_rgba = [0.1, 0.1, 0.1, 1.0]
+        self.back_wall_rgba = [0.3, 0.3, 0.3, 1.0]
+        self.right_wall_rgba = [0.5, 0.5, 0.5, 1.0]
+        self.front_wall_rgba = [0.7, 0.7, 0.7, 1.0]
+
         self.obs_rgba = [1.0, 0.0, 0.0, 1.0]
         self.goal_rgba  = [0.0, 1.0, 0.0, 1.0]
 
         # Car initial x/y/theta
         self.car_init_state = np.array([0.1, 0., 0.])
-        # self.visual_initial_states = [  np.array([0.1, 0., 0.]),
-        #                                 np.array([1.5, 0., 0.]),
-        #                                 np.array([1.5, 0., np.pi])]
         self.visual_initial_states = np.array([ [ 0.3,  0.7],
                                                 [ 1.,  -0.5],
                                                 [ 1.5,  0. ],
@@ -108,7 +109,6 @@ class NavigationObsPBEnv(gym.Env):
         # Car dynamics
         self.state_dim = 3
         self.action_dim = 1
-        # TODO: tuning?
         self.v = 0.2
         self.dt = 0.1
         self.doneType = doneType
@@ -122,7 +122,8 @@ class NavigationObsPBEnv(gym.Env):
         self._goal_radius = task.get('goal_radius', 0.15)
         self._obs_loc  = task.get('obs_loc', np.array([self.state_bound/2, 0]))
         self._obs_radius = task.get('obs_radius', 0.3)
-        self._obs_buffer = 0.1 # no cost if outside buffer
+        self._obs_buffer = 0.2 # no cost if outside buffer
+        self.obs_reward_scale = 1
 
         # Set up PyBullet parameters
         self._renders = render
@@ -202,39 +203,57 @@ class NavigationObsPBEnv(gym.Env):
                 halfExtents=[	self.wall_thickness/2,
                                 self.state_bound/2,
                                 self.wall_height/2])
-            wall_visual_id = p.createVisualShape(
+            wall_back_visual_id = p.createVisualShape(
                 p.GEOM_BOX,
-                rgbaColor=self.wall_rgba,
+                rgbaColor=self.back_wall_rgba,
                 halfExtents=[	self.wall_thickness/2,
                                 self.state_bound/2,
                                 self.wall_height/2])
             self.wall_back_id = p.createMultiBody(
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
-                baseVisualShapeIndex=wall_visual_id,
+                baseVisualShapeIndex=wall_back_visual_id,
                 basePosition=[	-self.wall_thickness/2,
                                 0,
+                                self.wall_height/2])
+            wall_left_visual_id = p.createVisualShape(
+                p.GEOM_BOX,
+                rgbaColor=self.left_wall_rgba,
+                halfExtents=[	self.wall_thickness/2,
+                                self.state_bound/2,
                                 self.wall_height/2])
             self.wall_left_id = p.createMultiBody(	# positive in y
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
-                baseVisualShapeIndex=wall_visual_id,
+                baseVisualShapeIndex=wall_left_visual_id,
                 basePosition=[	self.state_bound/2,
                                 self.state_bound/2+self.wall_thickness/2,
                                 self.wall_height/2],
                 baseOrientation=p.getQuaternionFromEuler([0,0,np.pi/2]))
+            wall_right_visual_id = p.createVisualShape(
+                p.GEOM_BOX,
+                rgbaColor=self.right_wall_rgba,
+                halfExtents=[	self.wall_thickness/2,
+                                self.state_bound/2,
+                                self.wall_height/2])
             self.wall_right_id = p.createMultiBody(	# negative in y
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
-                baseVisualShapeIndex=wall_visual_id,
+                baseVisualShapeIndex=wall_right_visual_id,
                 basePosition=[	self.state_bound/2,
                                 -self.state_bound/2-self.wall_thickness/2,
                                 self.wall_height/2],
                 baseOrientation=p.getQuaternionFromEuler([0,0,np.pi/2]))
+            wall_front_visual_id = p.createVisualShape(
+                p.GEOM_BOX,
+                rgbaColor=self.front_wall_rgba,
+                halfExtents=[	self.wall_thickness/2,
+                                self.state_bound/2,
+                                self.wall_height/2])
             self.wall_front_id = p.createMultiBody(
                 baseMass=0,
                 baseCollisionShapeIndex=wall_collision_id,
-                baseVisualShapeIndex=wall_visual_id,
+                baseVisualShapeIndex=wall_front_visual_id,
                 basePosition=[	self.state_bound+self.wall_thickness/2,
                                 0,
                                 self.wall_height/2])
@@ -261,20 +280,6 @@ class NavigationObsPBEnv(gym.Env):
                 baseCollisionShapeIndex=obs_collision_id,
                 baseVisualShapeIndex=obs_visual_id,
                 basePosition=np.append(self._obs_loc, self.wall_height/2))
-
-            # target
-            # goal_collision_id = p.createCollisionShape(
-            #     p.GEOM_SPHERE,
-            #     radius=self._goal_radius)
-            # goal_visual_id = p.createVisualShape(
-            #     shapeType = p.GEOM_SPHERE,
-            #     radius=self._goal_radius,
-            #     rgbaColor=self.goal_rgba)
-            # self.goal_id = p.createMultiBody(
-            #     baseMass=0,
-            #     baseCollisionShapeIndex=goal_collision_id,
-            #     baseVisualShapeIndex=goal_visual_id,
-            #     basePosition=np.append(self._goal_loc, self._goal_radius))
 
             # Door - behind the virtual target
             door_visual_id = p.createVisualShape(
@@ -390,7 +395,6 @@ class NavigationObsPBEnv(gym.Env):
         success = l_x <= 0
 
         #= `reward` signal
-        # TODO: tuning?
         dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
         reward_goal = -dist_to_goal_center
 
@@ -402,7 +406,7 @@ class NavigationObsPBEnv(gym.Env):
             reward_obs = -dist_to_obs_boundary/self._obs_buffer
         else:
             reward_obs = 0
-        reward = reward_goal + reward_obs
+        reward = reward_goal + self.obs_reward_scale * reward_obs
 
         #= `done` signal
         if self.doneType == 'end':
@@ -526,10 +530,15 @@ class NavigationObsPBEnv(gym.Env):
             idx = it.multi_index
             x = xs[idx[0]]
             y = ys[idx[1]]
-            state = np.array([x, y, theta])
-            obs = self._get_obs(state)
-            obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
-            v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+            
+            # getCameraImage somehow hangs at the joint between walls
+            if (abs(x) == self.state_bound or abs(x) == 0) and abs(y) == self.state_bound/2:
+                v[idx] = 0
+            else:
+                state = np.array([x, y, theta])
+                obs = self._get_obs(state)
+                obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
+                v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
             it.iternext()
         return v, xs, ys
 
@@ -766,7 +775,7 @@ class NavigationObsPBEnv(gym.Env):
     #== Plotting ==
     def visualize(  self, q_func, policy, device, rndTraj=False, num_rnd_traj=10,
                     vmin=-1, vmax=1, nx=101, ny=101, cmap='seismic',
-                    labels=None, boolPlot=False):
+                    labels=None, boolPlot=False, plotV=True):
         """
         visualize
 
@@ -801,9 +810,10 @@ class NavigationObsPBEnv(gym.Env):
             self.plot_target_failure_set(ax)
 
             #== Plot V ==
-            self.plot_v_values( q_func, device, fig, ax, theta=theta,
-                                boolPlot=boolPlot, cbarPlot=cbarPlot,
-                                vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap)
+            if plotV:
+                self.plot_v_values( q_func, device, fig, ax, theta=theta,
+                                    boolPlot=boolPlot, cbarPlot=cbarPlot,
+                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap)
 
             #== Plot Trajectories ==
             thetas = theta*np.ones(shape=(self.visual_initial_states.shape[0], 1))
