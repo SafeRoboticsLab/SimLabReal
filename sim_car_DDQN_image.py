@@ -37,7 +37,7 @@ parser = argparse.ArgumentParser()
 
 # environment parameters
 parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
-    default='end',  type=str)
+    default='fail',  type=str)
 parser.add_argument("-rnd", "--randomSeed",     help="random seed",
     default=0,      type=int)
 parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
@@ -80,8 +80,8 @@ parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
 
 # RL type
-parser.add_argument("-m",   "--mode",           help="mode",
-    default='RA',   type=str)
+parser.add_argument("-ur",   "--use_RA",        help="mode",
+    action="store_true")
 parser.add_argument("-tt",  "--terminalType",   help="terminal value",
     default='g',    type=str)
 
@@ -243,8 +243,7 @@ CONFIG = dqnImageConfig(
 dimList = CONFIG.ARCHITECTURE + [actionNum]
 kernel_sz = args.kernel_sz
 n_channel = [env.observation_space.shape[0]] + args.n_channel
-agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
-            terminalType=args.terminalType)
+agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel, use_RA=args.use_RA, terminalType=args.terminalType)
 pytorch_total_params = sum(
     p.numel() for p in agent.Q_network.parameters() if p.requires_grad)
 print('Total parameters: {}'.format(pytorch_total_params))
