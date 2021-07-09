@@ -22,6 +22,7 @@ class Encoder(torch.nn.Module):
                         img_sz, 
                         kernel_sz,
                         n_channel,
+                        use_sm=True,
                         device='cpu',
                         verbose=True,
                 ):
@@ -31,14 +32,9 @@ class Encoder(torch.nn.Module):
                             cnn_kernel_size=kernel_sz,
                             output_n_channel=n_channel,
                             img_size=img_sz,
-                            use_sm=True,
+                            use_sm=use_sm,
                             use_bn=False,
                             verbose=verbose).to(device)
-
-    # def forward_conv(self, image):
-    #     # image = image.view(T * B, *img_shape)
-    #     conv_out = self.conv(image) # 1 x channel(64) x 48 x 48
-    #     return conv_out
 
     def forward(self, image, detach=False):
         if len(image.shape) == 3:
@@ -48,13 +44,6 @@ class Encoder(torch.nn.Module):
         if detach:
             out = out.detach()
         return out
-
-    # def output_size(self):
-    #     if self.spatial_softmax:
-    #         return self.channels[-1]*2
-    #     else:
-    #         return self.conv.conv_out_size(h=self.observation_shape[1], 
-    #                                         w=self.observation_shape[2])
 
     def copy_conv_weights_from(self, source):
         """Tie convolutional layers - assume actor and critic have same conv structure"""
@@ -74,6 +63,7 @@ class SACPiNetwork(torch.nn.Module):
                         img_sz, 
                         kernel_sz,
                         n_channel,
+                        use_sm=True,
                         device='cpu',
                         verbose=True,
                         ):
@@ -85,9 +75,13 @@ class SACPiNetwork(torch.nn.Module):
                                 img_sz,
                                 kernel_sz,
                                 n_channel,
+                                use_sm,
                                 device,
                                 verbose)
-        dim_conv_out = n_channel[-1]*2 # assume spatial softmax
+        if use_sm:
+            dim_conv_out = n_channel[-1]*2 # assume spatial softmax
+        else:
+            dim_conv_out = n_channel[-1]*img_sz ** 2
         mlp_dim = [dim_conv_out] + mlp_dim + [actionDim]
 
         # Linear layers
@@ -137,6 +131,7 @@ class SACTwinnedQNetwork(torch.nn.Module):
                         img_sz, 
                         kernel_sz,
                         n_channel,
+                        use_sm=True,
                         device='cpu',
                         verbose=True,
                         ):
@@ -149,14 +144,30 @@ class SACTwinnedQNetwork(torch.nn.Module):
                                 img_sz,
                                 kernel_sz,
                                 n_channel,
+                                use_sm,
                                 device,
                                 verbose)
-        dim_conv_out = n_channel[-1]*2 # assume spatial softmax
+        if use_sm:
+            dim_conv_out = n_channel[-1]*2 # assume spatial softmax
+        else:
+            dim_conv_out = n_channel[-1]*img_sz ** 2
         mlp_dim = [dim_conv_out+actionDim] + mlp_dim + [1]
 
         # Double critics
-        self.Q1 = MLP(mlp_dim, actType, verbose=verbose).to(device)
-        self.Q2 = copy.deepcopy(self.Q1)
+        self.Q1 = nn.Sequential(
+                        nn.Linear(mlp_dim[0], mlp_dim[1]),
+                        nn.LayerNorm(mlp_dim[1]),
+                        nn.Linear(mlp_dim[1], mlp_dim[2]),
+                        nn.ReLU(),
+                        nn.Linear(mlp_dim[2], mlp_dim[3]),
+                ).to(device)
+        self.Q2 = nn.Sequential(
+                        nn.Linear(mlp_dim[0], mlp_dim[1]),
+                        nn.LayerNorm(mlp_dim[1]),
+                        nn.Linear(mlp_dim[1], mlp_dim[2]),
+                        nn.ReLU(),
+                        nn.Linear(mlp_dim[2], mlp_dim[3]),
+                ).to(device)
 
 
     def forward(self, image, actions, detach_encoder=False):
@@ -178,8 +189,8 @@ class SACTwinnedQNetwork(torch.nn.Module):
         conv_out = self.encoder.forward(image, detach=detach_encoder)
         q_input = torch.cat([conv_out.view(B, -1), 
                             actions.view(B, -1)], dim=1)
-        q1 = self.Q1(q_input).squeeze(-1)
-        q2 = self.Q2(q_input).squeeze(-1)
+        q1 = self.Q1(q_input)
+        q2 = self.Q2(q_input)
 
         # Restore dimension
         if B == 1:
@@ -236,14 +247,29 @@ class GaussianPolicy(nn.Module):
     def __init__(self, dimList, actionMag, actType='Tanh', device='cpu', verbose=True):
         super(GaussianPolicy, self).__init__()
         self.device = device
-        if verbose:
-            print("The neural network for MEAN has the architecture as below:")
-        self.mean = MLP(dimList, actType, output_activation=nn.Tanh,
-            verbose=verbose).to(device)
-        if verbose:
-            print("The neural network for LOG_STD has the architecture as below:")
-        self.log_std = MLP(dimList, actType, output_activation=nn.Identity,
-            verbose=verbose).to(device)
+        # if verbose:
+        #     print("The neural network for MEAN has the architecture as below:")
+        self.mean = nn.Sequential(
+                        nn.Linear(dimList[0], dimList[1]),
+                        nn.LayerNorm(dimList[1]),
+                        nn.Linear(dimList[1], dimList[2]),
+                        nn.ReLU(),
+                        nn.Linear(dimList[2], dimList[3]),
+                        nn.Tanh()
+                    ).to(device)
+        # MLP(dimList, actType, output_activation=nn.Tanh,
+            # verbose=verbose).to(device)
+        # if verbose:
+        #     print("The neural network for LOG_STD has the architecture as below:")
+        self.log_std = nn.Sequential(
+                        nn.Linear(dimList[0], dimList[1]),
+                        nn.LayerNorm(dimList[1]),
+                        nn.Linear(dimList[1], dimList[2]),
+                        nn.ReLU(),
+                        nn.Linear(dimList[2], dimList[3]),
+                    ).to(device)
+        # self.log_std = MLP(dimList, actType, output_activation=nn.Identity,
+        #     verbose=verbose).to(device)
 
         self.a_max = actionMag
         self.a_min = -actionMag
@@ -264,7 +290,7 @@ class GaussianPolicy(nn.Module):
     #     return mean, log_std
 
 
-    def forward(self, state):
+    def forward(self, state):   # mean only
         stateTensor = state.to(self.device)
         mean = self.mean(stateTensor)
         return mean * self.scale + self.bias
@@ -299,35 +325,6 @@ class GaussianPolicy(nn.Module):
             log_prob = log_prob.sum()
         # mean = torch.tanh(mean) * self.scale + self.bias
         return action, log_prob
-
-    # def log_likelihood(self, x, dist_info):
-    #     """
-    #     Uses ``self.std`` unless that is None, then uses log_std from dist_info.
-    #     When squashing: instead of numerically risky arctanh, assume param
-    #     'x' is pre-squash action, see ``sample_loglikelihood()`` below.
-    #     """
-    #     mean = dist_info.mean
-    #     if self.std is None:
-    #         log_std = dist_info.log_std
-    #         if self.min_log_std is not None or self.max_log_std is not None:
-    #             log_std = torch.clamp(log_std, min=self.min_log_std,
-    #                 max=self.max_log_std)
-    #         std = torch.exp(log_std)
-    #     else:
-    #         std, log_std = self.std, torch.log(self.std)
-    #     # When squashing: instead of numerically risky arctanh, assume param
-    #     # 'x' is pre-squash action, see sample_loglikelihood() below.
-    #     # if self.squash is not None:
-    #     #     x = torch.atanh(x / self.squash)  # No torch implementation.
-    #     z = (x - mean) / (std + EPS)
-    #     logli = -(torch.sum(log_std + 0.5 * z ** 2, dim=-1) +
-    #         0.5 * self.dim * math.log(2 * math.pi))
-    #     if self.squash is not None:
-    #         logli -= torch.sum(
-    #             torch.log(self.squash * (1 - torch.tanh(x) ** 2) + EPS),
-    #             dim=-1)
-    #     return logli
-
 
 
 class DeterministicPolicy(nn.Module):
