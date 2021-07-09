@@ -168,7 +168,7 @@ class DDQN_image(DDQN):
             else:
                 raise ValueError("invalid terminalType")
         else: # V(s) = c(s, a) + gamma * V(s')
-            expected_state_action_values = state_value_nxt * self.GAMMA + reward
+            expected_state_action_values = state_value_nxt * self.GAMMA - reward
 
         #== regression: Q(s, a) <- V(s) ==
         loss = smooth_l1_loss(input=state_action_values, target=expected_state_action_values.detach())
