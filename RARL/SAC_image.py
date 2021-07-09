@@ -10,9 +10,11 @@ from torch.optim import AdamW, Adam
 from torch.optim import lr_scheduler
 
 import numpy as np
+from numpy import array
 import matplotlib.pyplot as plt
 import os
 import time
+import visdom
 
 from .model import SACPiNetwork, SACTwinnedQNetwork
 from .ActorCritic import ActorCritic, Transition
@@ -38,7 +40,7 @@ class SAC_image(ActorCritic):
         self.init_alpha = CONFIG.ALPHA
         self.LEARN_ALPHA = CONFIG.LEARN_ALPHA
         self.log_alpha = torch.tensor(np.log(self.init_alpha)).to(self.device)
-        self.target_entropy = self.actionDim    #?
+        self.target_entropy = -self.actionDim
         self.LR_Al = CONFIG.LR_Al
         self.LR_Al_PERIOD = CONFIG.LR_Al_PERIOD
         self.LR_Al_DECAY = CONFIG.LR_Al_DECAY
@@ -50,8 +52,9 @@ class SAC_image(ActorCritic):
         else:
             print("SAC with fixed alpha = {:.1e}".format(self.init_alpha))
 
-        #
+        #= reach-avoid setting
         self.use_RA = CONFIG.USE_RA
+        self.terminalType = terminalType
 
         #= critic/actor-related hyper-parameters
         self.mlp_dim_actor = CONFIG.MLP_DIM[0]
@@ -95,13 +98,16 @@ class SAC_image(ActorCritic):
                                         n_channel=self.n_channel,
                                         device=self.device,
                                         verbose=verbose)
-        self.target = copy.deepcopy(self.critic)
+        self.criticTarget = copy.deepcopy(self.critic)
 
         # Tie weights for conv layers
         self.actor.encoder.copy_conv_weights_from(self.critic.encoder)
 
         # Set up optimizer
         self.build_optimizer()  # from SAC
+
+        # Initialize alpha
+        self.reset_alpha()
 
 
     def reset_alpha(self):
@@ -117,7 +123,7 @@ class SAC_image(ActorCritic):
         return self.log_alpha.exp()
 
 
-    def initBuffer(self, env, ratio=1.):
+    def initBuffer(self, env, ratio=1.0):
         cnt = 0
         s = env.reset()
         while len(self.memory) < self.memory.capacity * ratio:
@@ -201,9 +207,9 @@ class SAC_image(ActorCritic):
 
         non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x = \
             self.unpack_batch(batch)
-        self.critic.train()
-        self.criticTarget.eval()
-        self.actor.eval()
+        # self.critic.train()
+        # self.criticTarget.eval()
+        # self.actor.eval()
 
         #== get Q(s,a) ==
         q1, q2 = self.critic(state, action)  # Used to compute loss (non-target part).
@@ -221,26 +227,22 @@ class SAC_image(ActorCritic):
             else:
                 q_min = torch.min(next_q1, next_q2).view(-1)
 
-        if self.use_RA:
-            y[non_final_mask] =  (
-                (1.0 - self.GAMMA) * torch.max(l_x[non_final_mask], g_x[non_final_mask]) +
-                self.GAMMA * torch.max( g_x[non_final_mask], torch.min(l_x[non_final_mask], q_max)))
-            if self.terminalType == 'g':
-                y[torch.logical_not(non_final_mask)] = g_x[torch.logical_not(non_final_mask)]
-            elif self.terminalType == 'max':
-                y[torch.logical_not(non_final_mask)] = torch.max(
-                    l_x[torch.logical_not(non_final_mask)], g_x[torch.logical_not(non_final_mask)])
-            else:
-                raise ValueError("invalid terminalType")
+            if self.use_RA:
+                y[non_final_mask] =  (
+                    (1.0 - self.GAMMA) * torch.max(l_x[non_final_mask], g_x[non_final_mask]) +
+                    self.GAMMA * torch.max( g_x[non_final_mask], torch.min(l_x[non_final_mask], q_max)))
+                if self.terminalType == 'g':
+                    y[torch.logical_not(non_final_mask)] = g_x[torch.logical_not(non_final_mask)]
+                elif self.terminalType == 'max':
+                    y[torch.logical_not(non_final_mask)] = torch.max(
+                        l_x[torch.logical_not(non_final_mask)], g_x[torch.logical_not(non_final_mask)])
+                else:
+                    raise ValueError("invalid terminalType")
 
-        else:
-            target_q = q_min - self.alpha * next_log_prob
-            y = reward
-            y[non_final_mask] += self.GAMMA*target_q[non_final_mask]
-            # target_value = min_target_q - self._alpha * target_log_pi
-            # disc = self.discount ** self.n_step_return
-            # y = (self.reward_scale * samples_r.return_ +
-            #     (1 - samples_r.done_n.float()) * disc * target_value)
+            else:
+                target_q = q_min - self.alpha * next_log_prob.view(-1)  # already masked - can be lower dim than y
+                y = reward  #! no scaling for reward right now, and n_step_return=1
+                y[non_final_mask] += self.GAMMA*target_q
 
         #== MSE update for both Q1 and Q2 ==
         loss_q1 = mse_loss(input=q1.view(-1), target=y)
@@ -262,10 +264,10 @@ class SAC_image(ActorCritic):
 
         _, _, state, _, _, _, _ = self.unpack_batch(batch)
 
-        self.critic.eval()
-        self.actor.train()
-        for p in self.critic.parameters():
-            p.requires_grad = False
+        # self.critic.eval()
+        # self.actor.train()
+        # for p in self.critic.parameters():
+        #     p.requires_grad = False
 
         action_sample, log_prob = self.actor.sample(state, detach_encoder=True)
         q_pi_1, q_pi_2 = self.critic(state, action_sample, detach_encoder=True)
@@ -279,35 +281,38 @@ class SAC_image(ActorCritic):
         # loss_pi = (q_pi - self.alpha * log_prob.view(-1)).mean()
         loss_entropy = log_prob.view(-1).mean()
         loss_q_eval = q_pi.mean()
-        loss_pi = -loss_q_eval + self.alpha * loss_entropy  #! should maximize loss_q_eval, right?
+        if self.use_RA:
+            loss_pi = loss_q_eval + self.alpha * loss_entropy  #! is this correct?
+        else:
+            loss_pi = -loss_q_eval + self.alpha * loss_entropy
         self.actorOptimizer.zero_grad()
         loss_pi.backward()
         # clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
         self.actorOptimizer.step()
 
-        for p in self.critic.parameters(): 
-            p.requires_grad = True
+        # for p in self.critic.parameters(): 
+        #     p.requires_grad = True
 
         # Automatic temperature tuning
+        loss_alpha = (self.alpha *
+            (-log_prob - self.target_entropy).detach()).mean()
         if self.LEARN_ALPHA:
             self.log_alphaOptimizer.zero_grad()
-            loss_alpha = (self.alpha *
-                (-log_prob - self.target_entropy).detach()).mean()
             loss_alpha.backward()
             self.log_alphaOptimizer.step()
-        else:
-            loss_alpha = (self.alpha *
-                (-log_prob - self.target_entropy).detach()).mean()
         return loss_pi.item(), loss_entropy.item(), loss_alpha.item()
 
 
     def update(self, timer, update_period=2):
-        if len(self.memory) < self.start_updates:
-            return 0.0, 0.0, 0.0, 0.0
+        # if len(self.memory) < self.start_updates:
+        #     return 0.0, 0.0, 0.0, 0.0
 
         #== EXPERIENCE REPLAY ==
         transitions = self.memory.sample(self.BATCH_SIZE)
         batch = Transition(*zip(*transitions))
+
+        self.critic.train()
+        self.actor.train()
 
         loss_q = self.update_critic(batch)
         loss_pi, loss_entropy, loss_alpha = 0, 0, 0
@@ -316,22 +321,46 @@ class SAC_image(ActorCritic):
             print('\r{:d}: (q, pi, ent, alpha) = ({:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}).'.format(
                 self.cntUpdate, loss_q, loss_pi, loss_entropy, loss_alpha), end=' ')
 
-        self.update_target_networks()
+            self.update_target_networks()
+
+        self.critic.eval()
+        self.actor.eval()
 
         return loss_q, loss_pi, loss_entropy, loss_alpha
 
 
-    def learn(  self, env, MAX_UPDATES=2000000, MAX_EP_STEPS=100,
-                warmupBuffer=True, warmupQ=False, warmupIter=10000,
-                addBias=False, curUpdates=None, checkPeriod=50000,
+    def learn(  self, env, MAX_UPDATES=2000000, MAX_EP_STEPS=50,           
+                MAX_EVAL_EP_STEPS=100,
+                warmupBuffer=True, warmupBufferRatio=1.0, 
+                warmupQ=False, warmupIter=10000,
+                optimizeFreq=100, numUpdatePerOptimize=128,
+                curUpdates=None, checkPeriod=50000,
                 plotFigure=True, storeFigure=False,
                 showBool=False, vmin=-1, vmax=1, numRndTraj=200,
                 storeModel=True, saveBest=True, outFolder='RA', verbose=True):
 
+        vis = visdom.Visdom(env=outFolder, port=8098)
+        q_loss_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Q Loss'))
+        pi_loss_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Pi Loss'))
+        entropy_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Entropy'))
+        success_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Success'))
+
         # == Warmup Buffer ==
         startInitBuffer = time.time()
         if warmupBuffer:
-            self.initBuffer(env)
+            self.initBuffer(env, ratio=warmupBufferRatio)
         endInitBuffer = time.time()
 
         # == Warmup Q ==
@@ -369,13 +398,13 @@ class SAC_image(ActorCritic):
             # Rollout
             for _ in range(MAX_EP_STEPS):
                 # Select action
-                if warmupBuffer or self.cntUpdate > max(warmupIter, self.start_updates):
-                    with torch.no_grad():
-                        a, _ = self.actor.sample(
-                            torch.from_numpy(s).float().to(self.device))
-                        a = a.cpu().numpy()
-                else:
-                    a = env.action_space.sample()
+                # if warmupBuffer or self.cntUpdate > max(warmupIter, self.start_updates):
+                with torch.no_grad():
+                    a, _ = self.actor.sample(
+                        torch.from_numpy(s).float().to(self.device))
+                    a = a.view(-1).cpu().numpy()
+                # else:
+                    # a = env.action_space.sample()
 
                 # Interact with env
                 s_, r, done, info = env.step(a)
@@ -391,16 +420,22 @@ class SAC_image(ActorCritic):
                     self.actor.eval()
                     self.critic.eval()
                     # if self.actorType == 'SAC':
-                    #     actor_sim = lambda x: self.actor.sample(x)[0]
+                        # actor_sim = lambda x: self.actor.sample(x)[0]
                     # else:
-                    #     actor_sim = self.actor
-                    actor_sim = self.actor
+                    actor_sim = self.actor  # mean only and no std
                     results = env.simulate_trajectories(actor_sim,
-                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False)[1]
+                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj, 
+                        toEnd=False, sample_inside_obs=False, 
+                        sample_inside_tar=False)[1]
                     success  = np.sum(results==1) / numRndTraj
                     failure  = np.sum(results==-1)/ numRndTraj
                     unfinish = np.sum(results==0) / numRndTraj
                     trainProgress.append([success, failure, unfinish])
+
+                    vis.line(X=array([[self.cntUpdate]]),
+                                Y=array([[success]]),
+                            win=success_window,update='append')
+
                     if verbose:
                         lr = self.actorOptimizer.state_dict()['param_groups'][0]['lr']
                         print('\nAfter [{:d}] updates:'.format(self.cntUpdate))
@@ -420,15 +455,19 @@ class SAC_image(ActorCritic):
                             self.save(self.cntUpdate, modelFolder)
 
                     if plotFigure or storeFigure:
+
+                        # TODO: fix plot_v error when using critic in RA; not using it for training performance policy right now 
+
                         if showBool:
-                            env.visualize(self.critic.Q1, actor_sim, vmin=0, boolPlot=True, addBias=addBias)
+                            env.visualize(self.critic.Q1, actor_sim, self.device, vmin=0, boolPlot=True, plotV=False)
                         else:
-                            env.visualize(self.critic.Q1, actor_sim, vmin=vmin, vmax=vmax, cmap='seismic', addBias=addBias)
+                            env.visualize(self.critic.Q1, actor_sim, self.device, vmin=vmin, vmax=vmax, cmap='seismic', plotV=False)
 
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
                                 '{:d}.png'.format(self.cntUpdate))
                             plt.savefig(figurePath)
+                            plt.close()
                         if plotFigure:
                             plt.show()
                             plt.pause(0.001)
@@ -436,11 +475,22 @@ class SAC_image(ActorCritic):
 
                 # Perform one step of the optimization (on the target network)
                 loss_q, loss_pi, loss_entropy, loss_alpha = 0, 0, 0, 0
-                update_every = 100
-                if self.cntUpdate % update_every == 0:
-                    for timer in range(update_every):
+                if self.cntUpdate % optimizeFreq == 0:
+                    for timer in range(numUpdatePerOptimize):
                         loss_q, loss_pi, loss_entropy, loss_alpha = self.update(timer)
                         trainingRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha])
+
+                        if timer == 0:
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_q]]),
+                                    win=q_loss_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_pi]]),
+                                    win=pi_loss_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_entropy]]),
+                                    win=entropy_window,update='append')
+
                 self.cntUpdate += 1
 
                 # Update gamma, lr etc.
