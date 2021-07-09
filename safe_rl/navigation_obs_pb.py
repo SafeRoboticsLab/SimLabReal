@@ -51,6 +51,7 @@ class NavigationObsPBEnv(gym.Env):
                         img_W=128,
                         useRGB=True,
                         render=True,
+                        uniformWallColor=False,
                         doneType='fail'):
         """
         __init__: initialization
@@ -74,8 +75,8 @@ class NavigationObsPBEnv(gym.Env):
         self.wall_thickness = 0.05
         self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
         self.camera_height = 0.2	# cannot be too low, otherwise bad depth
-        self.sample_inside_obs=False
-        self.sample_inside_tar=True
+        self.sample_inside_obs = False
+        self.sample_inside_tar = True
 
         # Set up observation and action space for Gym
         self.img_H = img_H
@@ -89,16 +90,22 @@ class NavigationObsPBEnv(gym.Env):
             low=np.float32(0.),
             high=np.float32(1.),
             shape=(num_img_channel, img_H, img_W))
+        self.action_lim = np.float32(np.array([1.])) #! action_space is defined in the child class
 
         # Color
         self.ground_rgba = [0.9, 0.9, 0.9, 1.0]
-        self.left_wall_rgba = [0.1, 0.1, 0.1, 1.0]
-        self.back_wall_rgba = [0.3, 0.3, 0.3, 1.0]
-        self.right_wall_rgba = [0.5, 0.5, 0.5, 1.0]
-        self.front_wall_rgba = [0.7, 0.7, 0.7, 1.0]
-
-        self.obs_rgba = [1.0, 0.0, 0.0, 1.0]
-        self.goal_rgba  = [0.0, 1.0, 0.0, 1.0]
+        if uniformWallColor:
+            self.left_wall_rgba = [0.5, 0.5, 0.5, 1.0]
+            self.back_wall_rgba = [0.5, 0.5, 0.5, 1.0]
+            self.right_wall_rgba = [0.5, 0.5, 0.5, 1.0]
+            self.front_wall_rgba = [0.5, 0.5, 0.5, 1.0]
+        else:   # different greyscale
+            self.left_wall_rgba = [0.1, 0.1, 0.1, 1.0]
+            self.back_wall_rgba = [0.3, 0.3, 0.3, 1.0]
+            self.right_wall_rgba = [0.5, 0.5, 0.5, 1.0]
+            self.front_wall_rgba = [0.7, 0.7, 0.7, 1.0]
+        self.obs_rgba = [1.0, 0.0, 0.0, 1.0]    # red
+        self.goal_rgba  = [0.0, 1.0, 0.0, 1.0]  # green
 
         # Car initial x/y/theta
         self.car_init_state = np.array([0.1, 0., 0.])
@@ -112,17 +119,15 @@ class NavigationObsPBEnv(gym.Env):
         self.v = 0.2
         self.dt = 0.1
         self.doneType = doneType
-        #! action_space is defined in the child class
-        self.action_lim = np.float32(np.array([1.]))
 
         # Extract task info
-        # TODO: specify more
         self._task = task
         self._goal_loc = task.get('goal_loc', np.array([self.state_bound-0.2, 0.]))
         self._goal_radius = task.get('goal_radius', 0.15)
         self._obs_loc  = task.get('obs_loc', np.array([self.state_bound/2, 0]))
         self._obs_radius = task.get('obs_radius', 0.3)
         self._obs_buffer = 0.2 # no cost if outside buffer
+        self._boundary_buffer = 0.02    # not too close to boundary
         self.obs_reward_scale = 1
 
         # Set up PyBullet parameters
@@ -144,6 +149,7 @@ class NavigationObsPBEnv(gym.Env):
         # return [seed]
 
 
+    # TODO: call this in multi-env setting
     def reset_task(self, task):
         self._task = task
         self._goal_loc = task['goal_loc']
@@ -390,23 +396,44 @@ class NavigationObsPBEnv(gym.Env):
 
         #= `l_x` and `g_x` signal
         l_x = self.target_margin(self._state)
-        g_x = self.safety_margin(self._state)
-        fail = g_x > 0
+        g_x, boundary_margin = self.safety_margin(self._state, return_boundary=True)
+        fail = g_x >= -0.01 # prevent bad image at the boundary - small value to buffer
         success = l_x <= 0
 
         #= `reward` signal
-        dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
-        reward_goal = -dist_to_goal_center
+        # reward = 4
+        # dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
+        # # reward_goal = -dist_to_goal_center
+        # reward -= dist_to_goal_center
+        # dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
+        # dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
+        # if dist_to_obs_center < self._obs_radius:
+        #     # reward_obs = -1.1
+        #     reward = 0
+        # elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
+        #     # reward_obs = - (1 - dist_to_obs_boundary/self._obs_buffer)
+        #     reward -= (1-dist_to_obs_boundary/self._obs_buffer)
+        # if boundary_margin > -self._boundary_buffer:
+        #     reward -= (1+boundary_margin/self._boundary_buffer)
 
+        # Small penalty for wandering around
+        reward = -0.01
+        
+        # Large reward for reaching target
+        dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
+        if dist_to_goal_center < self._goal_radius:
+            # reward += (0.2-dist_to_goal_center)/0.2
+            reward = 1
+
+        # Large penalty for reaching obstacle or boundary
         dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
-        dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
         if dist_to_obs_center < self._obs_radius:
-            reward_obs = -1
-        elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
-            reward_obs = -dist_to_obs_boundary/self._obs_buffer
-        else:
-            reward_obs = 0
-        reward = reward_goal + self.obs_reward_scale * reward_obs
+            reward -= 1.0
+        # elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
+        #     reward -= 0.1*(1-dist_to_obs_boundary/self._obs_buffer)
+        if boundary_margin > -self._boundary_buffer:
+            # reward -= 0.1*(1+boundary_margin/self._boundary_buffer)
+            reward -= 1.0
 
         #= `done` signal
         if self.doneType == 'end':
@@ -418,8 +445,9 @@ class NavigationObsPBEnv(gym.Env):
         else:
             raise ValueError("invalid doneType")
 
+        # TODO: Tuning
         if done and self.doneType == 'fail':
-            g_x = 1  # TODO Tuning
+            g_x = 1
 
         return self._get_obs(self._state), reward, done, {'task': self._task,
             'state': self._state, 'g_x': g_x, 'l_x': l_x}
@@ -469,7 +497,6 @@ class NavigationObsPBEnv(gym.Env):
             return rgb
         else:
             return depth
-        # return rgbImg/255
 
 
     #== GETTER ==
@@ -530,9 +557,9 @@ class NavigationObsPBEnv(gym.Env):
             idx = it.multi_index
             x = xs[idx[0]]
             y = ys[idx[1]]
-            
-            # getCameraImage somehow hangs at the joint between walls
-            if (abs(x) == self.state_bound or abs(x) == 0) and abs(y) == self.state_bound/2:
+
+            # getCameraImage somehow hangs at the walls
+            if (abs(x) == self.state_bound or abs(x) == 0) or abs(y) == self.state_bound/2:
                 v[idx] = 0
             else:
                 state = np.array([x, y, theta])
@@ -601,7 +628,7 @@ class NavigationObsPBEnv(gym.Env):
         return target_margin
 
 
-    def safety_margin(self, state):
+    def safety_margin(self, state, return_boundary=False):
         """ Computes the margin (e.g. distance) between state and failue set.
 
         Args:
@@ -623,8 +650,10 @@ class NavigationObsPBEnv(gym.Env):
         g_xList.append(obs_margin)
 
         safety_margin = np.max(np.array(g_xList))
-        return safety_margin
-
+        if return_boundary:
+            return safety_margin, boundary_margin
+        else:
+            return safety_margin
 
     #== Trajectories Rollout ==
     def simulate_one_trajectory(self, policy, T=250, toEnd=False,
@@ -716,8 +745,7 @@ class NavigationObsPBEnv(gym.Env):
         return traj, result, minV, info
 
 
-    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, toEnd=False,
-            states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
+    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, toEnd=False, states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
         """
         simulate_trajectories: simulate the trajectories. If the states are not
             provided, we pick the initial states from the discretized state space.
@@ -774,8 +802,8 @@ class NavigationObsPBEnv(gym.Env):
 
     #== Plotting ==
     def visualize(  self, q_func, policy, device, rndTraj=False, num_rnd_traj=10,
-                    vmin=-1, vmax=1, nx=101, ny=101, cmap='seismic',
-                    labels=None, boolPlot=False, plotV=True):
+                    vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
+                    labels=None, boolPlot=False, plotV=True, normalize_v=False):
         """
         visualize
 
@@ -791,6 +819,7 @@ class NavigationObsPBEnv(gym.Env):
             ny (int, optional): # points in y-axis. Defaults to 101.
             cmap (str, optional): color map. Defaults to 'seismic'.
             labels (list, optional): x- and y- labels. Defaults to None.
+                v[idx] = q_func(obsTensor).max(dim=1)[0].cpu().detach().numpy()
             boolPlot (bool, optional): plot the binary values. Defaults to False.
         """
         thetaList = [0, np.pi/2, np.pi]
@@ -813,7 +842,7 @@ class NavigationObsPBEnv(gym.Env):
             if plotV:
                 self.plot_v_values( q_func, device, fig, ax, theta=theta,
                                     boolPlot=boolPlot, cbarPlot=cbarPlot,
-                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap)
+                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap, normalize_v=normalize_v)
 
             #== Plot Trajectories ==
             thetas = theta*np.ones(shape=(self.visual_initial_states.shape[0], 1))
@@ -833,7 +862,7 @@ class NavigationObsPBEnv(gym.Env):
 
     def plot_v_values(self, q_func, device, fig, ax, theta=np.pi/2,
             boolPlot=False, cbarPlot=True, vmin=-1, vmax=1, nx=101, ny=101,
-            cmap='seismic'):
+            cmap='seismic', normalize_v=False):
         """
         plot_v_values
 
@@ -864,13 +893,18 @@ class NavigationObsPBEnv(gym.Env):
             im = ax.imshow(v.T>0., interpolation='none', extent=axStyle[0],
                 origin="lower", cmap=cmap, zorder=-1)
         else:
+            if normalize_v:
+                v = (v-np.min(v))/(np.max(v)-np.min(v))
+                v = vmin + v*(vmax-vmin)
             im = ax.imshow(v.T, interpolation='none', extent=axStyle[0], origin="lower",
                     cmap=cmap, vmin=vmin, vmax=vmax, zorder=-1)
             CS = ax.contour(xs, ys, v.T, levels=[0], colors='g', linewidths=2,
                             linestyles='dashed')
             if cbarPlot:
-                cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
-                            ticks=[vmin, 0, vmax])
+                if normalize_v: # use true range in colorbar
+                    vmin = np.min(v)
+                    vmax = np.max(v)
+                cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95, ticks=[vmin, 0, vmax])
                 cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=16)
 
 
