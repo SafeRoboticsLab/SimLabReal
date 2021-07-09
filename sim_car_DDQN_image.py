@@ -67,7 +67,7 @@ parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
 parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
     action="store_true")
 parser.add_argument("-arc", "--architecture",   help="NN architecture",
-    default=[100, 100],     nargs="*", type=int)
+    default=[128, 128],     nargs="*", type=int)
 parser.add_argument("-nch", "--n_channel",      help="NN architecture",
     default=[16, 32, 64],   nargs="*", type=int)
 parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
