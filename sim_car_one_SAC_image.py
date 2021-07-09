@@ -13,6 +13,7 @@
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
 
+import pretty_errors
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -37,11 +38,13 @@ parser = argparse.ArgumentParser()
 
 # environment parameters
 parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
-    default='end',  type=str)
+    default='fail',  type=str)
 parser.add_argument("-rnd", "--randomSeed",     help="random seed",
     default=0,      type=int)
 parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
-    default=250,    type=int)
+    default=20,    type=int)
+parser.add_argument("-mes",  "--maxEvalSteps",   help="maximum eval steps",
+    default=100,    type=int)
 parser.add_argument("-ts",  "--targetScaling",  help="scaling of ell",
     default=1.,     type=float)
 
@@ -50,6 +53,8 @@ parser.add_argument("-w",   "--warmup",         help="warmup Q-network",
     action="store_true")
 parser.add_argument("-wi",  "--warmupIter",     help="warmup iteration",
     default=10000,  type=int)
+parser.add_argument("-wbr",  "--warmupBufferRatio",  help="warmup buffer ratio",
+    default=1.0, type=float)
 parser.add_argument("-mu",  "--maxUpdates",     help="maximal #gradient updates",
     default=800000, type=int)
 parser.add_argument("-ut",  "--updateTimes",    help="hyper-param. update times",
@@ -57,7 +62,9 @@ parser.add_argument("-ut",  "--updateTimes",    help="hyper-param. update times"
 parser.add_argument("-mc",  "--memoryCapacity", help="memoryCapacity",
     default=50000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",    help="check period",
-    default=40000,  type=int)
+    default=1000,  type=int)
+parser.add_argument("-bs",  "--batchSize",      help="batch size",
+    default=128,  type=int)
 
 # hyper-parameters
 parser.add_argument("-a",   "--annealing",      help="gamma annealing",
@@ -67,17 +74,25 @@ parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
 parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
     action="store_true")
 parser.add_argument("-arc", "--mlp_dim",   help="NN architecture",
-    default=[[128, 128], [256, 256]],     nargs="*", type=int)
+    default=[[64, 64], [128, 128]],     nargs="*", type=int)
 parser.add_argument("-nch", "--n_channel",      help="NN architecture",
     default=[16, 32, 64],   nargs="*", type=int)
 parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
     default=[5, 5, 3],      nargs="*", type=int)
 parser.add_argument("-lr",  "--learningRate",   help="learning rate",
     default=1e-3,   type=float)
+parser.add_argument("-lrd",  "--learningRateDecay",   help="learning rate decay",
+    default=1.0,   type=float)
 parser.add_argument("-g",   "--gamma",          help="contraction coeff.",
-    default=0.9999, type=float)
+    default=0.999, type=float)
 parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
+parser.add_argument("-al",   "--alpha",          help="alpha",
+    default=0.2, type=float)
+parser.add_argument("-lal",  "--learn_alpha",    help="learn alpha",
+    action="store_true")
+parser.add_argument("-ues",  "--optimize_freq",    help="optimize after  some samples", default=100, type=int)
+parser.add_argument("-nmo",  "--num_update_per_optimize",    help="number of updates per optimize", default=128, type=int)
 
 # RL type
 parser.add_argument("-ur",   "--use_RA",        help="mode",
@@ -109,7 +124,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
-maxSteps = args.maxSteps
 
 fn = args.name + '-' + args.doneType
 if args.showTime:
@@ -208,23 +222,24 @@ if args.annealing:
 else:
     GAMMA_END = args.gamma
 
+
 CONFIG = SACImageConfig(
     ENV_NAME=env_name,
     DEVICE=device,
     SEED=args.randomSeed,
     MAX_UPDATES=maxUpdates,
-    MAX_EP_STEPS=maxSteps,
-    BATCH_SIZE=64,
+    MAX_EP_STEPS=args.maxSteps,
+    BATCH_SIZE=args.batchSize,
     MEMORY_CAPACITY=args.memoryCapacity,
     GAMMA=args.gamma,
     GAMMA_PERIOD=updatePeriod,
     GAMMA_END=GAMMA_END,
     LR_C=args.learningRate,
     LR_C_PERIOD=updatePeriod,
-    LR_C_DECAY=0.8,
+    LR_C_DECAY=args.learningRateDecay,
     MAX_MODEL=50,
-    LEARN_ALPHA=False,
-    ALPHA=0.2,
+    LEARN_ALPHA=args.learn_alpha,
+    ALPHA=args.alpha,
     IMG_SZ=img_sz,
     MLP_DIM=args.mlp_dim,
     ACTIVATION=args.actType,
@@ -240,10 +255,7 @@ CONFIG = SACImageConfig(
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
 agent = SAC_image(CONFIG, terminalType=args.terminalType)
-
-pytorch_total_params = sum(
-    p.numel() for p in agent.critic.parameters() if p.requires_grad)
-print('Total parameters: {}'.format(pytorch_total_params))
+print(f'Total parameters in actor: {sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)}')
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
@@ -281,8 +293,11 @@ if args.warmup:
 
 #== Learning ==
 trainRecords, trainProgress = agent.learn(
-    env, warmupBuffer=True, warmupQ=False,
-    MAX_UPDATES=maxUpdates, MAX_EP_STEPS=maxSteps,
+    env, warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
+    warmupQ=False, MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
+    MAX_EVAL_EP_STEPS=args.maxEvalSteps,
+    optimizeFreq=args.optimize_freq, 
+    numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
@@ -365,7 +380,7 @@ if args.plotFigure or args.storeFigure:
     #= Action
     ax = axes[2]
     im = ax.imshow(actDistMtx.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=0, vmax=actionNum-1, zorder=-1)
+        origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
     ax.set_xlabel('Action', fontsize=24)
 
     #= Rollout
