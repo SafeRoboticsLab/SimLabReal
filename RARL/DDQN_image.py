@@ -23,7 +23,7 @@ from .DDQN import DDQN, Transition
 
 class DDQN_image(DDQN):
     def __init__(self, CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
-            mode='RA', terminalType='g', verbose=True):
+            use_RA=True, terminalType='g', verbose=True):
         """
         __init__
 
@@ -40,7 +40,7 @@ class DDQN_image(DDQN):
         """
         super(DDQN_image, self).__init__(CONFIG)
 
-        self.mode = mode # 'normal' or 'RA'
+        self.use_RA = use_RA # 'normal' or 'RA'
         self.terminalType = terminalType
 
         #== ENV PARAM ==
@@ -57,7 +57,7 @@ class DDQN_image(DDQN):
         self.actType = CONFIG.ACTIVATION
         self.build_network(dimList, img_sz, kernel_sz, n_channel, self.actType,
                 self.use_sm, self.use_bn, verbose)
-        print("DDQN: mode-{}; terminalType-{}".format(self.mode, self.terminalType))
+        print("DDQN: use RA-{}; terminalType-{}".format(self.use_RA, self.terminalType))
 
 
     def build_network(self, dimList, img_sz, kernel_sz, n_channel,
@@ -127,6 +127,7 @@ class DDQN_image(DDQN):
 
         #== get expected value ==
         state_value_nxt = torch.zeros(self.BATCH_SIZE).to(self.device)
+        # state_value_nxt = torch.ones(self.BATCH_SIZE).to(self.device)*10
 
         with torch.no_grad(): # V(s') = Q_tar(s', a'), a' is from Q_policy
             if self.double:
@@ -138,7 +139,7 @@ class DDQN_image(DDQN):
         state_value_nxt[non_final_mask] = Q_expect.gather(dim=1, index=action_nxt).view(-1)
 
         #== Discounted Reach-Avoid Bellman Equation (DRABE) ==
-        if self.mode == 'RA':
+        if self.use_RA:
             expected_state_action_values = torch.zeros(self.BATCH_SIZE).float().to(self.device)
 
             # Better version instead of DRABE on the paper (discussed on Nov. 18, 2020)
@@ -169,7 +170,7 @@ class DDQN_image(DDQN):
             else:
                 raise ValueError("invalid terminalType")
         else: # V(s) = c(s, a) + gamma * V(s')
-            expected_state_action_values = state_value_nxt * self.GAMMA + reward
+            expected_state_action_values = state_value_nxt * self.GAMMA - reward
 
         #== regression: Q(s, a) <- V(s) ==
         loss = smooth_l1_loss(input=state_action_values, target=expected_state_action_values.detach())
@@ -394,7 +395,8 @@ class DDQN_image(DDQN):
                 if self.cntUpdate != 0 and self.cntUpdate % checkPeriod == 0:
                     policy = lambda obs: self.select_action(obs, explore=False)[1]
                     results = env.simulate_trajectories(policy,
-                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False)[1]
+                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False,
+                        sample_inside_obs=False, sample_inside_tar=False)[1]
                     success  = np.sum(results==1) / results.shape[0]
                     failure  = np.sum(results==-1)/ results.shape[0]
                     unfinish = np.sum(results==0) / results.shape[0]
@@ -423,8 +425,9 @@ class DDQN_image(DDQN):
                             env.visualize(self.Q_network, policy, self.device,
                                 vmin=0, boolPlot=True)
                         else:
+                            normalize_v = not self.use_RA
                             env.visualize(self.Q_network, policy, self.device,
-                                vmin=vmin, vmax=vmax, cmap='seismic')
+                                vmin=vmin, vmax=vmax, cmap='seismic', normalize_v=normalize_v)
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
                                 '{:d}.png'.format(self.cntUpdate))
