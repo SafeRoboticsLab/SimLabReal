@@ -101,6 +101,8 @@ parser.add_argument("-tt",  "--terminalType",   help="terminal value",
     default='g',    type=str)
 
 # file
+parser.add_argument("-vis",  "--visdom",        help="use Visdom",
+    action="store_true")
 parser.add_argument("-nx",  "--nx",             help="check period",
     default=101, type=int)
 parser.add_argument("-st",  "--showTime",       help="show timestr",
@@ -300,7 +302,8 @@ trainRecords, trainProgress = agent.learn(
     numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
-    plotFigure=args.plotFigure, storeFigure=args.storeFigure)
+    plotFigure=args.plotFigure, storeFigure=args.storeFigure,
+    useVis=args.visdom)
 
 trainDict = {}
 trainDict['trainRecords'] = trainRecords

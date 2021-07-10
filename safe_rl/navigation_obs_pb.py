@@ -534,7 +534,7 @@ class NavigationObsPBEnv(gym.Env):
         return states, heuristic_v
 
 
-    def get_value(self, q_func, device, theta, nx=101, ny=101):
+    def get_value(self, q_func, device, theta, nx=101, ny=101, actor=None):
         """
         get_value: get the state values given the Q-network. We fix the heading
             angle of the car to `theta`.
@@ -565,7 +565,14 @@ class NavigationObsPBEnv(gym.Env):
                 state = np.array([x, y, theta])
                 obs = self._get_obs(state)
                 obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
-                v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+                
+                # SAC
+                if actor is not None:
+                    action = actor(obsTensor)
+                    print(action)
+                    v[idx] = q_func(obsTensor, action)[0].cpu().detach().numpy()
+                else:
+                    v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
             it.iternext()
         return v, xs, ys
 
@@ -801,9 +808,8 @@ class NavigationObsPBEnv(gym.Env):
 
 
     #== Plotting ==
-    def visualize(  self, q_func, policy, device, rndTraj=False, num_rnd_traj=10,
-                    vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
-                    labels=None, boolPlot=False, plotV=True, normalize_v=False):
+    def visualize(  self, q_func, policy, device, rndTraj=False, num_rnd_traj=10, vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
+        labels=None, boolPlot=False, normalize_v=False, actor=None):
         """
         visualize
 
@@ -839,10 +845,11 @@ class NavigationObsPBEnv(gym.Env):
             self.plot_target_failure_set(ax)
 
             #== Plot V ==
-            if plotV:
-                self.plot_v_values( q_func, device, fig, ax, theta=theta,
-                                    boolPlot=boolPlot, cbarPlot=cbarPlot,
-                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap, normalize_v=normalize_v)
+            self.plot_v_values( q_func, device, fig, ax, theta=theta,
+                                boolPlot=boolPlot, cbarPlot=cbarPlot,
+                                vmin=vmin, vmax=vmax, nx=nx, ny=ny, 
+                                cmap=cmap, normalize_v=normalize_v, 
+                                actor=actor)
 
             #== Plot Trajectories ==
             thetas = theta*np.ones(shape=(self.visual_initial_states.shape[0], 1))
@@ -862,7 +869,7 @@ class NavigationObsPBEnv(gym.Env):
 
     def plot_v_values(self, q_func, device, fig, ax, theta=np.pi/2,
             boolPlot=False, cbarPlot=True, vmin=-1, vmax=1, nx=101, ny=101,
-            cmap='seismic', normalize_v=False):
+            cmap='seismic', normalize_v=False, actor=None):
         """
         plot_v_values
 
@@ -887,7 +894,7 @@ class NavigationObsPBEnv(gym.Env):
         #== Plot V ==
         if theta == None:
             theta = 2.0 * np.random.uniform() * np.pi
-        v, xs, ys = self.get_value(q_func, device, theta, nx, ny)
+        v, xs, ys = self.get_value(q_func, device, theta, nx, ny, actor)
 
         if boolPlot:
             im = ax.imshow(v.T>0., interpolation='none', extent=axStyle[0],
@@ -908,9 +915,7 @@ class NavigationObsPBEnv(gym.Env):
                 cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=16)
 
 
-    def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, toEnd=False,
-            states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
-            c='k', lw=2, zorder=2):
+    def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, toEnd=False, states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, c='k', lw=2, zorder=2):
         """
         plot_trajectories: plot trajectories given the agent's Q-network.
 

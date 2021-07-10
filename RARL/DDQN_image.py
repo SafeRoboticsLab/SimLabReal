@@ -427,7 +427,8 @@ class DDQN_image(DDQN):
                         else:
                             normalize_v = not self.use_RA
                             env.visualize(self.Q_network, policy, self.device,
-                                vmin=vmin, vmax=vmax, cmap='seismic', normalize_v=normalize_v)
+                                vmin=vmin, vmax=vmax, cmap='seismic', 
+                                normalize_v=normalize_v)
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
                                 '{:d}.png'.format(self.cntUpdate))
