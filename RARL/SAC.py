@@ -234,7 +234,7 @@ class SAC(ActorCritic):
         q_pi = torch.max(q_pi_1, q_pi_2)
 
         # Obj: min_theta E[ Q(s, pi_theta(s, \xi)) + alpha * log(pi_theta(s, \xi))]
-        # loss_pi = (q_pi - self.alpha * log_prob.view(-1)).mean()
+        # loss_pi = (q_pi + self.alpha * log_prob.view(-1)).mean()
         loss_entropy = log_prob.view(-1).mean()
         loss_q_eval = q_pi.mean()
         loss_pi = loss_q_eval + self.alpha * loss_entropy

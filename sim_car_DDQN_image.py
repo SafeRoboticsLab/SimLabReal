@@ -1,14 +1,9 @@
 # Please contact the author(s) of this library if you have any questions.
 # Authors: Kai-Chieh Hsu ( kaichieh@princeton.edu )
 
-# This experiment runs double deep Q-network with the discounted reach-avoid
-# Bellman equation (DRABE) proposed in [RSS21] on a 3-dimensional Dubins car
-# problem. We use this script to generate Fig. 5 in the paper.
-
 # Examples:
     # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm 
-    #                               -mc 1000 -nx 11 -n tmp
+    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 11 -mc 1000 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
