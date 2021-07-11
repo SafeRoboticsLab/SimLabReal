@@ -7,7 +7,8 @@
 
 # Examples:
     # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm -mc 1000 -n tmp
+    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm 
+    #                               -mc 1000 -nx 11 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -19,6 +20,8 @@ import matplotlib.pyplot as plt
 import torch
 import os
 import argparse
+import warnings
+warnings.filterwarnings("ignore")
 
 import time
 timestr = time.strftime("%Y-%m-%d-%H_%M")
@@ -67,7 +70,7 @@ parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
 parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
     action="store_true")
 parser.add_argument("-arc", "--architecture",   help="NN architecture",
-    default=[128, 128],     nargs="*", type=int)
+    default=[100, 100],     nargs="*", type=int)
 parser.add_argument("-nch", "--n_channel",      help="NN architecture",
     default=[16, 32, 64],   nargs="*", type=int)
 parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
@@ -80,8 +83,8 @@ parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
 
 # RL type
-parser.add_argument("-ur",   "--use_RA",        help="mode",
-    action="store_true")
+parser.add_argument("-m",   "--mode",           help="mode",
+    default='RA',   type=str)
 parser.add_argument("-tt",  "--terminalType",   help="terminal value",
     default='g',    type=str)
 
@@ -111,7 +114,7 @@ updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
 maxSteps = args.maxSteps
 
-fn = args.name + '-' + args.doneType
+fn = args.name + '-' + args.mode + '-' + args.doneType
 if args.showTime:
     fn = fn + '-' + timestr
 
@@ -121,6 +124,7 @@ figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
 
 #== Environment ==
+print("\n== Environment Information ==")
 render = False
 img_sz = 48
 env = NavigationObsPBEnvDisc(render=render, img_H=img_sz, img_W=img_sz,
@@ -201,7 +205,7 @@ if args.plotFigure or args.storeFigure:
 
 
 #== AGENT ==
-print("== Agent Information ==")
+print("\n== Agent Information ==")
 if args.annealing:
     GAMMA_END = 0.9999
     EPS_PERIOD = int(updatePeriod/10)
@@ -210,7 +214,7 @@ else:
     GAMMA_END = args.gamma
     EPS_PERIOD = updatePeriod
     EPS_RESET_PERIOD = maxUpdates
-print(EPS_PERIOD, EPS_RESET_PERIOD)
+# print(EPS_PERIOD, EPS_RESET_PERIOD)
 
 CONFIG = dqnImageConfig(
     ENV_NAME=env_name,
@@ -243,12 +247,18 @@ CONFIG = dqnImageConfig(
 dimList = CONFIG.ARCHITECTURE + [actionNum]
 kernel_sz = args.kernel_sz
 n_channel = [env.observation_space.shape[0]] + args.n_channel
-agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel, use_RA=args.use_RA, terminalType=args.terminalType)
+agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel,
+            mode=args.mode, terminalType=args.terminalType)
 pytorch_total_params = sum(
     p.numel() for p in agent.Q_network.parameters() if p.requires_grad)
 print('Total parameters: {}'.format(pytorch_total_params))
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.Q_network.parameters()).is_cuda)
+
+if args.mode == 'safety':
+    rolloutEndType = 'fail'
+else:
+    rolloutEndType = 'TF'
 
 if args.warmup:
     print("\n== Warmup Q ==")
@@ -273,16 +283,9 @@ if args.warmup:
             plt.pause(0.001)
         plt.close()
 
-# agent.initBuffer(env)
-# transitions = agent.memory.sample(5)
-# batch = Transition(*zip(*transitions))
-# non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x = \
-#             agent.unpack_batch(batch)
-# print(action)
-# print(l_x)
-
 
 #== Learning ==
+print("\n== Learning Starts ==")
 trainRecords, trainProgress = agent.learn(
     env, warmupBuffer=True, warmupQ=False,
     MAX_UPDATES=maxUpdates, MAX_EP_STEPS=maxSteps,
@@ -358,7 +361,7 @@ if args.plotFigure or args.storeFigure:
         actDistMtx[idx] = action_index
 
         _, result, _, _ = env.simulate_one_trajectory(
-                            policy, T=250, state=state, toEnd=False)
+                            policy, T=250, state=state, endType=rolloutEndType)
         resultMtx[idx] = result
         it.iternext()
 
@@ -376,7 +379,7 @@ if args.plotFigure or args.storeFigure:
     im = ax.imshow(resultMtx.T != 1, interpolation='none', extent=axStyle[0],
         origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
     env.plot_trajectories(policy, ax, num_rnd_traj=5, theta=0.,
-        toEnd=False, c='w', lw=1.5, T=250)
+        endType=rolloutEndType, c='w', lw=1.5, T=maxSteps)
     ax.set_xlabel('Rollout RA', fontsize=24)
 
     #= Value

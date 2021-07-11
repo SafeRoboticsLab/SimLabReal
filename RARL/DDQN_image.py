@@ -127,7 +127,7 @@ class DDQN_image(DDQN):
 
         #== get expected value ==
         state_value_nxt = torch.zeros(self.BATCH_SIZE).to(self.device)
-        # state_value_nxt = torch.ones(self.BATCH_SIZE).to(self.device)*10
+
 
         with torch.no_grad(): # V(s') = Q_tar(s', a'), a' is from Q_policy
             if self.double:
@@ -141,12 +141,7 @@ class DDQN_image(DDQN):
         #== Discounted Reach-Avoid Bellman Equation (DRABE) ==
         if self.mode == 'RA':
             expected_state_action_values = torch.zeros(self.BATCH_SIZE).float().to(self.device)
-
-            # Better version instead of DRABE on the paper (discussed on Nov. 18, 2020)
-            # V(s) = gamma ( max{ g(s), min{ l(s), V_better(s') } } + (1-gamma) max{ g(s), l(s) },
-            # where V_better(s') = max{ g(s'), min{ l(s'), V(s') } }
-            # Another version (discussed on Feb. 22, 2021):
-                # we want Q(s, u) = V( f(s,u) )
+            # V(s) = max{ g(s), min{ l(s), V(s') } }, Q(s, u) = V( f(s,u) )
             non_terminal = torch.max(
                 g_x[non_final_mask],
                 torch.min(
@@ -170,9 +165,23 @@ class DDQN_image(DDQN):
             else:
                 raise ValueError("invalid terminalType")
         elif self.mode == 'safety':
-            #! implementing safety only update
-            pass
-        else: # V(s) = c(s, a) + gamma * V(s')
+            # V(s) = max{ g(s), V(s') }, Q(s, u) = V( f(s,u) )
+            expected_state_action_values = torch.zeros(self.BATCH_SIZE).float().to(self.device)
+            non_terminal = torch.max(
+                g_x[non_final_mask],
+                state_value_nxt[non_final_mask]
+            )
+            terminal = g_x[non_final_mask]
+
+            # normal state
+            expected_state_action_values[non_final_mask] = \
+                non_terminal * self.GAMMA + \
+                terminal * (1-self.GAMMA)
+
+            # terminal state
+            final_mask = torch.logical_not(non_final_mask)
+            expected_state_action_values[final_mask] = g_x[final_mask]
+        else: # V(s) = -r(s, a) + gamma * V(s')
             expected_state_action_values = state_value_nxt * self.GAMMA - reward
 
         #== regression: Q(s, a) <- V(s) ==
@@ -363,6 +372,11 @@ class DDQN_image(DDQN):
             figureFolder = os.path.join(outFolder, 'figure')
             os.makedirs(figureFolder, exist_ok=True)
 
+        if self.mode=='safety':
+            endType = 'fail'
+        else:
+            endType = 'TF'
+
         while self.cntUpdate <= MAX_UPDATES:
             s = env.reset()
             epCost = 0.
@@ -398,21 +412,28 @@ class DDQN_image(DDQN):
                 if self.cntUpdate != 0 and self.cntUpdate % checkPeriod == 0:
                     policy = lambda obs: self.select_action(obs, explore=False)[1]
                     results = env.simulate_trajectories(policy,
-                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False,
+                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, endType=endType,
                         sample_inside_obs=False, sample_inside_tar=False)[1]
-                    success  = np.sum(results==1) / results.shape[0]
-                    failure  = np.sum(results==-1)/ results.shape[0]
-                    unfinish = np.sum(results==0) / results.shape[0]
-                    trainProgress.append([success, failure, unfinish])
+                    if self.mode == 'safety':
+                        failure  = np.sum(results==-1)/ results.shape[0]
+                        success  =  1 - failure
+                        trainProgress.append([success, failure])
+                    else:
+                        success  = np.sum(results==1) / results.shape[0]
+                        failure  = np.sum(results==-1)/ results.shape[0]
+                        unfinish = np.sum(results==0) / results.shape[0]
+                        trainProgress.append([success, failure, unfinish])
                     if verbose:
                         lr = self.optimizer.state_dict()['param_groups'][0]['lr']
                         print('\nAfter [{:d}] updates:'.format(self.cntUpdate))
-                        print('  - eps={:.2f}, gamma={:.6f}, lr={:.1e}.'.format(
+                        print('  - eps={:.2f}, gamma={:.4f}, lr={:.1e}.'.format(
                             self.EPSILON, self.GAMMA, lr))
-                        print('  - success/failure/unfinished ratio:', end=' ')
-                        with np.printoptions(formatter={'float': '{: .3f}'.format}):
-                            print(np.array([success, failure, unfinish]))
-                        # print('{:.3f}, {:.3f}, {:.3f}'.format(success, failure, unfinish))
+                        if self.mode == 'safety':
+                            print('  - success/failure ratio:', end=' ')
+                        else:
+                            print('  - success/failure/unfinished ratio:', end=' ')
+                        with np.printoptions(formatter={'float': '{: .2f}'.format}):
+                            print(np.array(trainProgress[-1]))
 
                     if storeModel:
                         if storeBest:

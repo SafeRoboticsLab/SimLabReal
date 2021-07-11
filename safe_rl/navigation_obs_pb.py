@@ -663,7 +663,7 @@ class NavigationObsPBEnv(gym.Env):
             return safety_margin
 
     #== Trajectories Rollout ==
-    def simulate_one_trajectory(self, policy, T=250, toEnd=False,
+    def simulate_one_trajectory(self, policy, T=250, endType='TF',
             state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
         """
         simulate_one_trajectory: simulate the trajectory given the state or
@@ -672,8 +672,7 @@ class NavigationObsPBEnv(gym.Env):
         Args:
             policy (func): agent's policy.
             T (int, optional): the maximum length of the trajectory. Defaults to 250.
-            toEnd (bool, optional): simulate the trajectory until the robot crosses
-                the boundary or not. Defaults to False.
+            endType (str, optional): when to end the rollout. Defaults to 'TF'.
             state (np.ndarray, optional): if provided, set the initial state to
                 its value. Defaults to None.
             theta (float, optional): if provided, set the theta to its value.
@@ -724,20 +723,20 @@ class NavigationObsPBEnv(gym.Env):
             lxList.append(l_x)
 
             #= check the termination criterion
-            if toEnd:
+            if endType == 'end':
                 done = not self.check_within_bounds(_state)
                 if done:
-                    if minV <= 0:
-                        result = 1
-                    else:
-                        result = -1
-                    break
-            else:
+                    result = -1
+            elif endType == 'TF':
                 if g_x > 0:
                     result = -1 # failed
                     break
                 elif l_x <= 0:
-                    result = 1 # succeeded
+                    result = 1  # succeeded
+                    break
+            elif endType == 'fail':
+                if g_x > 0:
+                    result = -1 # failed
                     break
 
             #= simulate
@@ -752,7 +751,8 @@ class NavigationObsPBEnv(gym.Env):
         return traj, result, minV, info
 
 
-    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, toEnd=False, states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
+    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, endType='TF',
+        states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
         """
         simulate_trajectories: simulate the trajectories. If the states are not
             provided, we pick the initial states from the discretized state space.
@@ -761,8 +761,7 @@ class NavigationObsPBEnv(gym.Env):
             policy (func): agent's policy.
             num_rnd_traj ([type], optional): [description]. Defaults to None.
             T (int, optional): the maximum length of the trajectory. Defaults to 250.
-            toEnd (bool, optional): simulate the trajectory until the robot crosses
-                the boundary or not. Defaults to False.
+            endType (str, optional): when to end the rollout. Defaults to 'TF'.
             states (np.ndarray, optional): if provided, set the initial states to
                 its value. Defaults to None.
             theta (float, optional): if provided, set the theta to its value.
@@ -788,7 +787,7 @@ class NavigationObsPBEnv(gym.Env):
             minVs = np.empty(shape=(num_rnd_traj,), dtype=float)
             for idx in range(num_rnd_traj):
                 traj, result, minV, _ = self.simulate_one_trajectory(
-                    policy, T=T, toEnd=toEnd, theta=theta,
+                    policy, T=T, endType=endType, theta=theta,
                     sample_inside_obs=sample_inside_obs,
                     sample_inside_tar=sample_inside_tar)
                 trajectories.append(traj)
@@ -799,7 +798,7 @@ class NavigationObsPBEnv(gym.Env):
             minVs = np.empty(shape=(len(states),), dtype=float)
             for idx, state in enumerate(states):
                 traj, result, minV, _ = self.simulate_one_trajectory(
-                    policy, T=T, state=state, toEnd=toEnd)
+                    policy, T=T, state=state, endType=endType)
                 trajectories.append(traj)
                 results[idx] = result
                 minVs[idx] = minV
@@ -857,9 +856,9 @@ class NavigationObsPBEnv(gym.Env):
             states = np.concatenate((self.visual_initial_states, thetas), axis=1)
             if rndTraj:
                 self.plot_trajectories( policy, ax, num_rnd_traj=num_rnd_traj,
-                    theta=theta, toEnd=False)
+                    theta=theta, endType='TF')
             else:
-                self.plot_trajectories( policy, ax, states=states, toEnd=False)
+                self.plot_trajectories( policy, ax, states=states, endType='TF')
 
             #== Formatting ==
             self.plot_formatting(ax, labels=labels)
@@ -916,7 +915,7 @@ class NavigationObsPBEnv(gym.Env):
                 cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=16)
 
 
-    def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, toEnd=False,
+    def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, endType='TF',
             states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
             c='k', lw=2, zorder=2):
         """
@@ -927,8 +926,7 @@ class NavigationObsPBEnv(gym.Env):
             ax (matplotlib.axes.Axes).
             num_rnd_traj (int, optional): Defaults to None.
             T (int, optional): the maximum length of the trajectory. Defaults to 250.
-            toEnd (bool, optional): simulate the trajectory until the robot crosses
-                the boundary or not. Defaults to False.
+            endType (str, optional): when to end the rollout. Defaults to 'TF'.
             states (np.ndarray, optional): if provided, set the initial states to
                 its value. Defaults to None.
             theta (float, optional): if provided, set the theta to its value.
@@ -950,7 +948,7 @@ class NavigationObsPBEnv(gym.Env):
                 (len(states) == num_rnd_traj))
 
         trajectories, results, minVs = self.simulate_trajectories(
-            policy, num_rnd_traj=num_rnd_traj, T=T, toEnd=toEnd,
+            policy, num_rnd_traj=num_rnd_traj, T=T, endType=endType,
             states=states, theta=theta, sample_inside_obs=sample_inside_obs,
             sample_inside_tar=sample_inside_tar)
 

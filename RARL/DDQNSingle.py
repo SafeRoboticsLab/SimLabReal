@@ -156,8 +156,25 @@ class DDQNSingle(DDQN):
                     expected_state_action_values[final_mask] = terminal[final_mask]
                 else:
                     raise ValueError("invalid terminalType")
+        elif self.mode == 'safety':
+            # V(s) = max{ g(s), V(s') }, Q(s, u) = V( f(s,u) )
+            expected_state_action_values = torch.zeros(self.BATCH_SIZE).float().to(self.device)
+            non_terminal = torch.max(
+                g_x[non_final_mask],
+                state_value_nxt[non_final_mask]
+            )
+            terminal = g_x[non_final_mask]
+
+            # normal state
+            expected_state_action_values[non_final_mask] = \
+                non_terminal * self.GAMMA + \
+                terminal * (1-self.GAMMA)
+
+            # terminal state
+            final_mask = torch.logical_not(non_final_mask)
+            expected_state_action_values[final_mask] = g_x[final_mask]
         else: # V(s) = c(s, a) + gamma * V(s')
-            expected_state_action_values = state_value_nxt * self.GAMMA + reward
+            expected_state_action_values = state_value_nxt * self.GAMMA - reward
 
         #== regression: Q(s, a) <- V(s) ==
         loss = smooth_l1_loss(input=state_action_values, target=expected_state_action_values.detach())
