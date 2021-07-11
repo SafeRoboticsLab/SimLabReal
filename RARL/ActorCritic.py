@@ -71,7 +71,7 @@ Transition = namedtuple('Transition', ['s', 'a', 'r', 's_', 'info'])
 
 
 class ActorCritic(object):
-    def __init__(self, actorType, CONFIG, actionSpace):
+    def __init__(self, actorType, CONFIG):
         """
         __init__ : initializes actor-critic model.
 
@@ -85,8 +85,8 @@ class ActorCritic(object):
         self.memory = ReplayMemory(CONFIG.MEMORY_CAPACITY)
 
         #== ENV PARAM ==
-        self.actionSpace = actionSpace
-        self.actionDim = self.actionSpace.shape[0]
+        self.actionMag = CONFIG.ACTION_MAG
+        self.actionDim = CONFIG.ACTION_DIM
 
         #== PARAM ==
 
@@ -102,7 +102,7 @@ class ActorCritic(object):
 
         # NN: batch size, maximal number of NNs stored
         self.BATCH_SIZE = CONFIG.BATCH_SIZE
-        self.start_updates = 1000
+        # self.start_updates = 1000   #!
         self.MAX_MODEL = CONFIG.MAX_MODEL
         self.device = CONFIG.DEVICE
 

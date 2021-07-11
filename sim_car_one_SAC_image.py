@@ -1,13 +1,14 @@
 # Please contact the author(s) of this library if you have any questions.
 # Authors: Kai-Chieh Hsu ( kaichieh@princeton.edu )
+#           Allen Z. Ren ( allen.ren@princeton.edu )
 
 # This experiment runs double deep Q-network with the discounted reach-avoid
 # Bellman equation (DRABE) proposed in [RSS21] on a 3-dimensional Dubins car
 # problem. We use this script to generate Fig. 5 in the paper.
 
 # Examples:
-    # RA: python3 sim_car_DDQN_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_DDQN_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm -mc 1000 -n tmp
+    # RA: python3 sim_car_one_SAC_image.py -sf -of scratch -n 999 -mc 50000
+    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm -mc 1000 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -25,12 +26,11 @@ timestr = time.strftime("%Y-%m-%d-%H_%M")
 
 #= AGENT
 from RARL.utils import save_obj
-from RARL.DDQN_image import DDQN_image
-# from RARL.DDQN import Transition
-from RARL.config import dqnImageConfig
+from RARL.SAC_image import SAC_image
+from RARL.config import SACImageConfig
 
 #= ENV
-from safe_rl.navigation_obs_pb_disc import NavigationObsPBEnvDisc
+from safe_rl.navigation_obs_pb_cont import NavigationObsPBEnvCont
 
 #== ARGS ==
 parser = argparse.ArgumentParser()
@@ -41,7 +41,9 @@ parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
 parser.add_argument("-rnd", "--randomSeed",     help="random seed",
     default=0,      type=int)
 parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
-    default=250,    type=int)
+    default=20,    type=int)
+parser.add_argument("-mes",  "--maxEvalSteps",   help="maximum eval steps",
+    default=100,    type=int)
 parser.add_argument("-ts",  "--targetScaling",  help="scaling of ell",
     default=1.,     type=float)
 
@@ -50,6 +52,8 @@ parser.add_argument("-w",   "--warmup",         help="warmup Q-network",
     action="store_true")
 parser.add_argument("-wi",  "--warmupIter",     help="warmup iteration",
     default=10000,  type=int)
+parser.add_argument("-wbr",  "--warmupBufferRatio",  help="warmup buffer ratio",
+    default=1.0, type=float)
 parser.add_argument("-mu",  "--maxUpdates",     help="maximal #gradient updates",
     default=800000, type=int)
 parser.add_argument("-ut",  "--updateTimes",    help="hyper-param. update times",
@@ -57,7 +61,9 @@ parser.add_argument("-ut",  "--updateTimes",    help="hyper-param. update times"
 parser.add_argument("-mc",  "--memoryCapacity", help="memoryCapacity",
     default=50000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",    help="check period",
-    default=40000,  type=int)
+    default=1000,  type=int)
+parser.add_argument("-bs",  "--batchSize",      help="batch size",
+    default=128,  type=int)
 
 # hyper-parameters
 parser.add_argument("-a",   "--annealing",      help="gamma annealing",
@@ -66,18 +72,26 @@ parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
     action="store_true")
 parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
     action="store_true")
-parser.add_argument("-arc", "--architecture",   help="NN architecture",
-    default=[128, 128],     nargs="*", type=int)
+parser.add_argument("-arc", "--mlp_dim",   help="NN architecture",
+    default=[[64, 64], [128, 128]],     nargs="*", type=int)
 parser.add_argument("-nch", "--n_channel",      help="NN architecture",
     default=[16, 32, 64],   nargs="*", type=int)
 parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
     default=[5, 5, 3],      nargs="*", type=int)
 parser.add_argument("-lr",  "--learningRate",   help="learning rate",
     default=1e-3,   type=float)
+parser.add_argument("-lrd",  "--learningRateDecay",   help="learning rate decay",
+    default=1.0,   type=float)
 parser.add_argument("-g",   "--gamma",          help="contraction coeff.",
-    default=0.9999, type=float)
+    default=0.999, type=float)
 parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
+parser.add_argument("-al",   "--alpha",          help="alpha",
+    default=0.2, type=float)
+parser.add_argument("-lal",  "--learn_alpha",    help="learn alpha",
+    action="store_true")
+parser.add_argument("-ues",  "--optimize_freq",    help="optimize after  some samples", default=100, type=int)
+parser.add_argument("-nmo",  "--num_update_per_optimize",    help="number of updates per optimize", default=128, type=int)
 
 # RL type
 parser.add_argument("-ur",   "--use_RA",        help="mode",
@@ -109,7 +123,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
-maxSteps = args.maxSteps
 
 fn = args.name + '-' + args.doneType
 if args.showTime:
@@ -123,13 +136,15 @@ os.makedirs(figureFolder, exist_ok=True)
 #== Environment ==
 render = False
 img_sz = 48
-env = NavigationObsPBEnvDisc(render=render, img_H=img_sz, img_W=img_sz,
+env = NavigationObsPBEnvCont(render=render, img_H=img_sz, img_W=img_sz,
         doneType=args.doneType)
 env.seed(args.randomSeed)
 
 stateDim = env.state_dim
-actionNum = env.action_num
-actionSet = env.discrete_controls
+actionDim = env.action_dim
+actionLim = env.action_lim
+print("State Dimension: {:d}, Action Dimension: {:d}".format(
+    stateDim, actionDim))
 env.report()
 
 #== Get and Plot max{l_x, g_x} ==
@@ -199,56 +214,49 @@ if args.plotFigure or args.storeFigure:
         plt.pause(0.001)
     plt.close()
 
-
 #== AGENT ==
 print("== Agent Information ==")
 if args.annealing:
     GAMMA_END = 0.9999
-    EPS_PERIOD = int(updatePeriod/10)
-    EPS_RESET_PERIOD = updatePeriod
 else:
     GAMMA_END = args.gamma
-    EPS_PERIOD = updatePeriod
-    EPS_RESET_PERIOD = maxUpdates
-print(EPS_PERIOD, EPS_RESET_PERIOD)
 
-CONFIG = dqnImageConfig(
+
+CONFIG = SACImageConfig(
     ENV_NAME=env_name,
     DEVICE=device,
     SEED=args.randomSeed,
     MAX_UPDATES=maxUpdates,
-    MAX_EP_STEPS=maxSteps,
-    BATCH_SIZE=64,
+    MAX_EP_STEPS=args.maxSteps,
+    BATCH_SIZE=args.batchSize,
     MEMORY_CAPACITY=args.memoryCapacity,
-    ARCHITECTURE=args.architecture,
-    ACTIVATION=args.actType,
     GAMMA=args.gamma,
     GAMMA_PERIOD=updatePeriod,
     GAMMA_END=GAMMA_END,
-    EPS_PERIOD=EPS_PERIOD,
-    EPS_DECAY=0.6,
-    EPS_RESET_PERIOD=EPS_RESET_PERIOD,
     LR_C=args.learningRate,
     LR_C_PERIOD=updatePeriod,
-    LR_C_DECAY=0.8,
+    LR_C_DECAY=args.learningRateDecay,
     MAX_MODEL=50,
-    N_CHANNEL=args.n_channel, 
-    KERNEL_SZ=args.kernel_sz, 
-    USE_SM=args.softmax, 
-    USE_BN=args.batch_norm)
+    LEARN_ALPHA=args.learn_alpha,
+    ALPHA=args.alpha,
+    IMG_SZ=img_sz,
+    MLP_DIM=args.mlp_dim,
+    ACTIVATION=args.actType,
+    KERNEL_SIZE=args.kernel_sz,
+    N_CHANNEL=args.n_channel,
+    USE_BN=args.batch_norm,
+    USE_SM=args.softmax,
+    ACTION_MAG=float(actionLim),
+    ACTION_DIM=actionDim,
+    USE_RA=args.use_RA,
+)
 
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
-
-dimList = CONFIG.ARCHITECTURE + [actionNum]
-kernel_sz = args.kernel_sz
-n_channel = [env.observation_space.shape[0]] + args.n_channel
-agent = DDQN_image(CONFIG, actionSet, dimList, img_sz, kernel_sz, n_channel, use_RA=args.use_RA, terminalType=args.terminalType)
-pytorch_total_params = sum(
-    p.numel() for p in agent.Q_network.parameters() if p.requires_grad)
-print('Total parameters: {}'.format(pytorch_total_params))
+agent = SAC_image(CONFIG, terminalType=args.terminalType)
+print(f'Total parameters in actor: {sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)}')
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
-print("Critic is using cuda: ", next(agent.Q_network.parameters()).is_cuda)
+print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
 if args.warmup:
     print("\n== Warmup Q ==")
@@ -284,8 +292,11 @@ if args.warmup:
 
 #== Learning ==
 trainRecords, trainProgress = agent.learn(
-    env, warmupBuffer=True, warmupQ=False,
-    MAX_UPDATES=maxUpdates, MAX_EP_STEPS=maxSteps,
+    env, warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
+    warmupQ=False, MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
+    MAX_EVAL_EP_STEPS=args.maxEvalSteps,
+    optimizeFreq=args.optimize_freq, 
+    numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
@@ -368,7 +379,7 @@ if args.plotFigure or args.storeFigure:
     #= Action
     ax = axes[2]
     im = ax.imshow(actDistMtx.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=0, vmax=actionNum-1, zorder=-1)
+        origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
     ax.set_xlabel('Action', fontsize=24)
 
     #= Rollout

@@ -40,7 +40,7 @@ class DDQN_image(DDQN):
         """
         super(DDQN_image, self).__init__(CONFIG)
 
-        self.mode = mode # 'normal' or 'RA'
+        self.mode = mode # 'normal' or 'RA' or 'safety'
         self.terminalType = terminalType
 
         #== ENV PARAM ==
@@ -88,6 +88,7 @@ class DDQN_image(DDQN):
                                     verbose=verbose)
         self.Q_network.to(self.device)
         self.target_network = copy.deepcopy(self.Q_network)
+        print('Num of parameters in state encoder: %d' % sum(p.numel() for p in self.Q_network.parameters() if p.requires_grad))
 
         self.build_optimizer()
 
@@ -126,6 +127,7 @@ class DDQN_image(DDQN):
 
         #== get expected value ==
         state_value_nxt = torch.zeros(self.BATCH_SIZE).to(self.device)
+        # state_value_nxt = torch.ones(self.BATCH_SIZE).to(self.device)*10
 
         with torch.no_grad(): # V(s') = Q_tar(s', a'), a' is from Q_policy
             if self.double:
@@ -167,6 +169,9 @@ class DDQN_image(DDQN):
                 expected_state_action_values[final_mask] = terminal[final_mask]
             else:
                 raise ValueError("invalid terminalType")
+        elif self.mode == 'safety':
+            #! implementing safety only update
+            pass
         else: # V(s) = c(s, a) + gamma * V(s')
             expected_state_action_values = state_value_nxt * self.GAMMA - reward
 
@@ -393,7 +398,8 @@ class DDQN_image(DDQN):
                 if self.cntUpdate != 0 and self.cntUpdate % checkPeriod == 0:
                     policy = lambda obs: self.select_action(obs, explore=False)[1]
                     results = env.simulate_trajectories(policy,
-                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False)[1]
+                        T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, toEnd=False,
+                        sample_inside_obs=False, sample_inside_tar=False)[1]
                     success  = np.sum(results==1) / results.shape[0]
                     failure  = np.sum(results==-1)/ results.shape[0]
                     unfinish = np.sum(results==0) / results.shape[0]
@@ -422,8 +428,9 @@ class DDQN_image(DDQN):
                             env.visualize(self.Q_network, policy, self.device,
                                 vmin=0, boolPlot=True)
                         else:
+                            normalize_v = not (self.mode == 'RA' or self.mode == 'safety')
                             env.visualize(self.Q_network, policy, self.device,
-                                vmin=vmin, vmax=vmax, cmap='seismic')
+                                vmin=vmin, vmax=vmax, cmap='seismic', normalize_v=normalize_v)
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
                                 '{:d}.png'.format(self.cntUpdate))

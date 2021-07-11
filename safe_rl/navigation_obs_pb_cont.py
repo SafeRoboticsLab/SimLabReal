@@ -63,7 +63,12 @@ if __name__ == '__main__':
     print("- action space:", env.action_space)
 
     # Run 2 trials
-    states = [np.array([1.7, 0, 0]), None]
+    # states = [np.array([0.5, 0.0, 0]), None]  # about entering obstacle, facing target
+    # states = [np.array([0.2, 0.0, 0]), None]  # before obstable, facing target
+    # states = [np.array([0.6, 0.0, np.pi]), None]  # facing backward
+    # states = [np.array([0.6, 0.8, np.pi/2]), None]    # facing wall
+    states = [np.array([1.4, 0, 0]), None]  # after obstacle, facing target
+    # states = [np.array([1.6, 0, 0]), None]  # about entering target
     for i in range(2):
         print('\n== {} =='.format(i))
         obs = env.reset(random_init=False, state_init=states[i])
@@ -77,12 +82,12 @@ if __name__ == '__main__':
             x, y, yaw = state
             l_x = info['l_x']
             g_x = info['g_x']
-            print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
-                t, x, y, l_x, g_x, done))
+            print('[{}] x: {:.3f}, y: {:.3f}, r: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
+                t, x, y, r, l_x, g_x, done))
             if render:
                 plt.imshow(obs[:3, :, :].transpose(1,2,0))
                 plt.show(block=False)    # Default is a blocking call
-                plt.pause(.5)
+                plt.pause(1.0)
                 plt.close()
             if done:
                 break
