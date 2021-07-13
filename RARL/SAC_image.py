@@ -257,7 +257,7 @@ class SAC_image(ActorCritic):
                 y[final_mask] = g_x[final_mask]
             elif self.mode == 'performance':
                 target_q = q_min - self.alpha * next_log_prob.view(-1)  # already masked - can be lower dim than y
-                y = reward  #! no scaling for reward right now, and n_step_return=1
+                y = reward
                 y[non_final_mask] += self.GAMMA*target_q
 
         #== MSE update for both Q1 and Q2 ==
@@ -298,9 +298,6 @@ class SAC_image(ActorCritic):
         loss_entropy = log_prob.view(-1).mean()
         loss_q_eval = q_pi.mean()
         if self.mode == 'RA' or self.mode=='safety':
-            #! Allen: is this correct?
-            #* KC: Yes! Here the critic shows the reach-avoid cost (to minimize).
-            #* But in the conventional RL, the critic shows the reward (to maximize).
             loss_pi = loss_q_eval + self.alpha * loss_entropy
         elif self.mode == 'performance':
             loss_pi = -loss_q_eval + self.alpha * loss_entropy
