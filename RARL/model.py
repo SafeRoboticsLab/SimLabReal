@@ -6,9 +6,9 @@ import torch.nn as nn
 from torch.distributions import Normal
 import copy
 import numpy as np
+from collections import OrderedDict
 
-from .neuralNetwork import MLP, ConvNet
-
+from .neuralNetwork import MLP, ConvNet, activationDict
 
 def tie_weights(src, trg):
     assert type(src) == type(trg)
@@ -27,6 +27,8 @@ class Encoder(torch.nn.Module):
                         verbose=True,
                 ):
         super().__init__()
+        if verbose:
+            print("The neural network for encoder has the architecture as below:")
         self.conv = ConvNet(input_n_channel=input_n_channel,
                             mlp_dimList=[], # no linear layers
                             cnn_kernel_size=kernel_sz,
@@ -77,7 +79,7 @@ class SACPiNetwork(torch.nn.Module):
                                 n_channel,
                                 use_sm,
                                 device,
-                                verbose)
+                                False)
         if use_sm:
             dim_conv_out = n_channel[-1]*2 # assume spatial softmax
         else:
@@ -154,20 +156,17 @@ class SACTwinnedQNetwork(torch.nn.Module):
         mlp_dim = [dim_conv_out+actionDim] + mlp_dim + [1]
 
         # Double critics
-        self.Q1 = nn.Sequential(
-                        nn.Linear(mlp_dim[0], mlp_dim[1]),
-                        nn.LayerNorm(mlp_dim[1]),
-                        nn.Linear(mlp_dim[1], mlp_dim[2]),
-                        nn.ReLU(),
-                        nn.Linear(mlp_dim[2], mlp_dim[3]),
-                ).to(device)
-        self.Q2 = nn.Sequential(
-                        nn.Linear(mlp_dim[0], mlp_dim[1]),
-                        nn.LayerNorm(mlp_dim[1]),
-                        nn.Linear(mlp_dim[1], mlp_dim[2]),
-                        nn.ReLU(),
-                        nn.Linear(mlp_dim[2], mlp_dim[3]),
-                ).to(device)
+        self.Q1 = nn.Sequential( OrderedDict([
+                    ('linear_1',    nn.Linear(mlp_dim[0], mlp_dim[1])),
+                    ('norm_1',      nn.LayerNorm(mlp_dim[1])),
+                    ('linear_2',    nn.Linear(mlp_dim[1], mlp_dim[2])),
+                    ('act_2',       activationDict[actType]),
+                    ('linear_3',    nn.Linear(mlp_dim[2], mlp_dim[3])),
+        ])).to(device)
+        self.Q2 = copy.deepcopy(self.Q1)
+        if verbose:
+            print("The MLP for critic has the architecture as below:")
+            print(self.Q1)
 
 
     def forward(self, image, actions, detach_encoder=False):
@@ -247,29 +246,30 @@ class GaussianPolicy(nn.Module):
     def __init__(self, dimList, actionMag, actType='Tanh', device='cpu', verbose=True):
         super(GaussianPolicy, self).__init__()
         self.device = device
-        # if verbose:
-        #     print("The neural network for MEAN has the architecture as below:")
-        self.mean = nn.Sequential(
-                        nn.Linear(dimList[0], dimList[1]),
-                        nn.LayerNorm(dimList[1]),
-                        nn.Linear(dimList[1], dimList[2]),
-                        nn.ReLU(),
-                        nn.Linear(dimList[2], dimList[3]),
-                        nn.Tanh()
-                    ).to(device)
-        # MLP(dimList, actType, output_activation=nn.Tanh,
-            # verbose=verbose).to(device)
-        # if verbose:
-        #     print("The neural network for LOG_STD has the architecture as below:")
-        self.log_std = nn.Sequential(
-                        nn.Linear(dimList[0], dimList[1]),
-                        nn.LayerNorm(dimList[1]),
-                        nn.Linear(dimList[1], dimList[2]),
-                        nn.ReLU(),
-                        nn.Linear(dimList[2], dimList[3]),
-                    ).to(device)
+        self.mean = nn.Sequential( OrderedDict([
+                    ('linear_1',    nn.Linear(dimList[0], dimList[1])),
+                    ('norm_1',      nn.LayerNorm(dimList[1])),
+                    ('linear_2',    nn.Linear(dimList[1], dimList[2])),
+                    ('act_2',       activationDict[actType]),
+                    ('linear_3',    nn.Linear(dimList[2], dimList[3])),
+                    ('act_3',       nn.Tanh()),
+        ])).to(device)
+        # self.mean = MLP(dimList, actType, output_activation=nn.Tanh,
+        #     verbose=verbose).to(device)
+        self.log_std = nn.Sequential( OrderedDict([
+                    ('linear_1',    nn.Linear(dimList[0], dimList[1])),
+                    ('norm_1',      nn.LayerNorm(dimList[1])),
+                    ('linear_2',    nn.Linear(dimList[1], dimList[2])),
+                    ('act_2',       activationDict[actType]),
+                    ('linear_3',    nn.Linear(dimList[2], dimList[3])),
+        ])).to(device)
         # self.log_std = MLP(dimList, actType, output_activation=nn.Identity,
         #     verbose=verbose).to(device)
+        if verbose:
+            print("The MLP for MEAN has the architecture as below:")
+            print(self.mean)
+            print("The MLP for LOG_STD has the architecture as below:")
+            print(self.log_std)
 
         self.a_max = actionMag
         self.a_min = -actionMag
