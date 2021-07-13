@@ -153,6 +153,7 @@ actionLim = env.action_lim
 print("State Dimension: {:d}, Action Dimension: {:d}".format(
     stateDim, actionDim))
 env.report()
+env.reset()
 
 #== Get and Plot max{l_x, g_x} ==
 if args.plotFigure or args.storeFigure:
@@ -223,7 +224,7 @@ if args.plotFigure or args.storeFigure:
 
 
 #== AGENT ==
-print("== Agent Information ==")
+print("\n== Agent Information ==")
 if args.annealing:
     GAMMA_END = 0.9999
 else:
