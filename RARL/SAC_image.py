@@ -14,7 +14,7 @@ from numpy import array
 import matplotlib.pyplot as plt
 import os
 import time
-import visdom
+# import visdom
 
 from .model import SACPiNetwork, SACTwinnedQNetwork
 from .ActorCritic import ActorCritic, Transition

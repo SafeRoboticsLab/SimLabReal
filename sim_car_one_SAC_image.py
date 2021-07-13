@@ -4,7 +4,7 @@
 
 # Examples:
     # RA: python3 sim_car_one_SAC_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm -mc 1000 -n tmp
+    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -sm -mc 1000 -m safety -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
