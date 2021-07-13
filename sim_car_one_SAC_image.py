@@ -303,7 +303,7 @@ trainRecords, trainProgress = agent.learn(
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure,
-    useVis=args.visdom)
+    useVis=args.visdom, visEnvName=args.outFolder.split('/')[-1])
 
 trainDict = {}
 trainDict['trainRecords'] = trainRecords

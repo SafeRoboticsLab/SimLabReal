@@ -338,10 +338,10 @@ class SAC_image(ActorCritic):
                 plotFigure=True, storeFigure=False,
                 showBool=False, vmin=-1, vmax=1, numRndTraj=200,
                 storeModel=True, saveBest=True, outFolder='RA', verbose=True,
-                useVis=False):
+                useVis=False, visEnvName=None):
 
         if useVis:
-            vis = visdom.Visdom(env=outFolder, port=8098)
+            vis = visdom.Visdom(env=visEnvName, port=8098)
             q_loss_window = vis.line(
                 X=array([[0]]),
                 Y=array([[0]]),
@@ -350,6 +350,10 @@ class SAC_image(ActorCritic):
                 X=array([[0]]),
                 Y=array([[0]]),
                 opts=dict(xlabel='epoch', title='Pi Loss'))
+            alpha_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Alpha'))
             entropy_window = vis.line(
                 X=array([[0]]),
                 Y=array([[0]]),
@@ -491,6 +495,9 @@ class SAC_image(ActorCritic):
                             vis.line(X=array([[self.cntUpdate]]),
                                         Y=array([[loss_entropy]]),
                                     win=entropy_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[self.alpha.item()]]),
+                                    win=alpha_window,update='append')
 
                 self.cntUpdate += 1
 

@@ -569,7 +569,6 @@ class NavigationObsPBEnv(gym.Env):
                 # SAC
                 if actor is not None:
                     action = actor(obsTensor)
-                    print(action)
                     v[idx] = q_func(obsTensor, action)[0].cpu().detach().numpy()
                 else:
                     v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
