@@ -59,7 +59,7 @@ if __name__ == '__main__':
     # Test single environment in GUI
     render=True
     useRGB=True
-    env = NavigationObsPBEnvDisc(render=render, useRGB=useRGB)
+    env = NavigationObsPBEnvDisc(render=render, useRGB=useRGB, doneType='fail')
     print(env._renders)
     print("\n== Environment Information ==")
     print("- state dim: {:d}, action dim: {:d}".format(env.state_dim, env.action_dim))
@@ -75,14 +75,19 @@ if __name__ == '__main__':
             # Apply random action
             action = env.action_space.sample()
             obs, r, done, info = env.step(action)
-            state = info['state']
-
-            # Debug
-            x, y, yaw = state
+            s_ = info['state']
             l_x = info['l_x']
             g_x = info['g_x']
-            print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
-                t, x, y, l_x, g_x, done))
+            s_ = None if done else s_
+
+            # Debug
+            if s_ is None:
+                print('[{}] l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
+                    t, l_x, g_x, done))
+            else:
+                x, y, yaw = s_
+                print('[{}] x: {:.3f}, y: {:.3f}, l_x: {:.3f}, g_x: {:.3f}, d: {}'.format(
+                    t, x, y, l_x, g_x, done))
             if render:
                 plt.imshow(obs[:3, :, :].transpose(1,2,0))
                 plt.show(block=False)    # Default is a blocking call

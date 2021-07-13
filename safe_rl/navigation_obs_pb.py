@@ -46,11 +46,12 @@ class NavigationObsPBEnv(gym.Env):
     Right now there is a single obstacle at the center of the map. Info from
         step() stores distance to obstacle boundary (g) and distance to goal (l)
     """
-    def __init__(self, task={},
+    def __init__(self,  task={},
                         img_H=128,
                         img_W=128,
                         useRGB=True,
                         render=True,
+                        sample_inside_obs=False,
                         uniformWallColor=False,
                         doneType='fail'):
         """
@@ -75,8 +76,8 @@ class NavigationObsPBEnv(gym.Env):
         self.wall_thickness = 0.05
         self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
         self.camera_height = 0.2	# cannot be too low, otherwise bad depth
-        self.sample_inside_obs = False
-        self.sample_inside_tar = True
+        self.sample_inside_obs=sample_inside_obs
+        self.sample_inside_tar=True
 
         # Set up observation and action space for Gym
         self.img_H = img_H
@@ -299,7 +300,7 @@ class NavigationObsPBEnv(gym.Env):
                 baseCollisionShapeIndex=-1,
                 baseVisualShapeIndex=door_visual_id,
                 basePosition=[self.state_bound-0.01,
-                            0,
+                            self._goal_loc[1],
                             self.wall_height/2])
 
             # Set up car if visualizing in GUI
@@ -499,6 +500,12 @@ class NavigationObsPBEnv(gym.Env):
             return depth
 
 
+    def set_visual_initial_states(self, states):
+        assert states.shape[1] == 2 or states.shape[1] == 3,\
+            'The shape of states is not correct, the second dim should be 2 or 3.'
+        self.visual_initial_states = states
+
+
     #== GETTER ==
     def report(self):
         print("Dynamic parameters:")
@@ -534,14 +541,13 @@ class NavigationObsPBEnv(gym.Env):
         return states, heuristic_v
 
 
-    def get_value(self, q_func, device, theta, nx=101, ny=101, actor=None):
+    def get_value(self, q_func, theta, nx=101, ny=101):
         """
         get_value: get the state values given the Q-network. We fix the heading
             angle of the car to `theta`.
 
         Args:
             q_func (object): agent's Q-network.
-            device (str): agent's device.
             theta (float): the heading angle of the car.
             nx (int, optional): # points in x-axis. Defaults to 101.
             ny (int, optional): # points in y-axis. Defaults to 101.
@@ -564,14 +570,9 @@ class NavigationObsPBEnv(gym.Env):
             else:
                 state = np.array([x, y, theta])
                 obs = self._get_obs(state)
-                obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
-                
-                # SAC
-                if actor is not None:
-                    action = actor(obsTensor)
-                    v[idx] = q_func(obsTensor, action)[0].cpu().detach().numpy()
-                else:
-                    v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+                # obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
+                # v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+                v[idx] = q_func(obs)
             it.iternext()
         return v, xs, ys
 
@@ -662,7 +663,7 @@ class NavigationObsPBEnv(gym.Env):
             return safety_margin
 
     #== Trajectories Rollout ==
-    def simulate_one_trajectory(self, policy, T=250, toEnd=False,
+    def simulate_one_trajectory(self, policy, T=250, endType='TF',
             state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
         """
         simulate_one_trajectory: simulate the trajectory given the state or
@@ -671,8 +672,7 @@ class NavigationObsPBEnv(gym.Env):
         Args:
             policy (func): agent's policy.
             T (int, optional): the maximum length of the trajectory. Defaults to 250.
-            toEnd (bool, optional): simulate the trajectory until the robot crosses
-                the boundary or not. Defaults to False.
+            endType (str, optional): when to end the rollout. Defaults to 'TF'.
             state (np.ndarray, optional): if provided, set the initial state to
                 its value. Defaults to None.
             theta (float, optional): if provided, set the theta to its value.
@@ -723,20 +723,20 @@ class NavigationObsPBEnv(gym.Env):
             lxList.append(l_x)
 
             #= check the termination criterion
-            if toEnd:
+            if endType == 'end':
                 done = not self.check_within_bounds(_state)
                 if done:
-                    if minV <= 0:
-                        result = 1
-                    else:
-                        result = -1
-                    break
-            else:
+                    result = -1
+            elif endType == 'TF':
                 if g_x > 0:
                     result = -1 # failed
                     break
                 elif l_x <= 0:
-                    result = 1 # succeeded
+                    result = 1  # succeeded
+                    break
+            elif endType == 'fail':
+                if g_x > 0:
+                    result = -1 # failed
                     break
 
             #= simulate
@@ -751,7 +751,8 @@ class NavigationObsPBEnv(gym.Env):
         return traj, result, minV, info
 
 
-    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, toEnd=False, states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
+    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, endType='TF',
+        states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
         """
         simulate_trajectories: simulate the trajectories. If the states are not
             provided, we pick the initial states from the discretized state space.
@@ -760,8 +761,7 @@ class NavigationObsPBEnv(gym.Env):
             policy (func): agent's policy.
             num_rnd_traj ([type], optional): [description]. Defaults to None.
             T (int, optional): the maximum length of the trajectory. Defaults to 250.
-            toEnd (bool, optional): simulate the trajectory until the robot crosses
-                the boundary or not. Defaults to False.
+            endType (str, optional): when to end the rollout. Defaults to 'TF'.
             states (np.ndarray, optional): if provided, set the initial states to
                 its value. Defaults to None.
             theta (float, optional): if provided, set the theta to its value.
@@ -787,7 +787,7 @@ class NavigationObsPBEnv(gym.Env):
             minVs = np.empty(shape=(num_rnd_traj,), dtype=float)
             for idx in range(num_rnd_traj):
                 traj, result, minV, _ = self.simulate_one_trajectory(
-                    policy, T=T, toEnd=toEnd, theta=theta,
+                    policy, T=T, endType=endType, theta=theta,
                     sample_inside_obs=sample_inside_obs,
                     sample_inside_tar=sample_inside_tar)
                 trajectories.append(traj)
@@ -798,7 +798,7 @@ class NavigationObsPBEnv(gym.Env):
             minVs = np.empty(shape=(len(states),), dtype=float)
             for idx, state in enumerate(states):
                 traj, result, minV, _ = self.simulate_one_trajectory(
-                    policy, T=T, state=state, toEnd=toEnd)
+                    policy, T=T, state=state, endType=endType)
                 trajectories.append(traj)
                 results[idx] = result
                 minVs[idx] = minV
@@ -807,15 +807,15 @@ class NavigationObsPBEnv(gym.Env):
 
 
     #== Plotting ==
-    def visualize(  self, q_func, policy, device, rndTraj=False, num_rnd_traj=10, vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
-        labels=None, boolPlot=False, normalize_v=False, actor=None):
+    def visualize(  self, q_func, policy, rndTraj=False, num_rnd_traj=10,
+                    vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
+                    labels=None, boolPlot=False, plotV=True, normalize_v=False):
         """
         visualize
 
         Args:
             q_func (object): agent's Q-network.
             policy (func): agent's policy.
-            device (str): agent's device.
             rndTraj (bool, optional): random initialization or not. Defaults to False.
             num_rnd_traj (int, optional): number of states. Defaults to None.
             vmin (int, optional): vmin in colormap. Defaults to -1.
@@ -824,10 +824,9 @@ class NavigationObsPBEnv(gym.Env):
             ny (int, optional): # points in y-axis. Defaults to 101.
             cmap (str, optional): color map. Defaults to 'seismic'.
             labels (list, optional): x- and y- labels. Defaults to None.
-                v[idx] = q_func(obsTensor).max(dim=1)[0].cpu().detach().numpy()
             boolPlot (bool, optional): plot the binary values. Defaults to False.
         """
-        thetaList = [0, np.pi/2, np.pi]
+        thetaList = [np.pi, np.pi/2, 0]
         fig = plt.figure(figsize=(12, 4))
         ax1 = fig.add_subplot(131)
         ax2 = fig.add_subplot(132)
@@ -844,20 +843,20 @@ class NavigationObsPBEnv(gym.Env):
             self.plot_target_failure_set(ax)
 
             #== Plot V ==
-            self.plot_v_values( q_func, device, fig, ax, theta=theta,
-                                boolPlot=boolPlot, cbarPlot=cbarPlot,
-                                vmin=vmin, vmax=vmax, nx=nx, ny=ny, 
-                                cmap=cmap, normalize_v=normalize_v, 
-                                actor=actor)
+            if plotV:
+                self.plot_v_values( q_func, fig, ax, theta=theta,
+                                    boolPlot=boolPlot, cbarPlot=cbarPlot,
+                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap,
+                                    normalize_v=normalize_v)
 
             #== Plot Trajectories ==
             thetas = theta*np.ones(shape=(self.visual_initial_states.shape[0], 1))
             states = np.concatenate((self.visual_initial_states, thetas), axis=1)
             if rndTraj:
                 self.plot_trajectories( policy, ax, num_rnd_traj=num_rnd_traj,
-                    theta=theta, toEnd=False)
+                    theta=theta, endType='TF')
             else:
-                self.plot_trajectories( policy, ax, states=states, toEnd=False)
+                self.plot_trajectories( policy, ax, states=states, endType='TF')
 
             #== Formatting ==
             self.plot_formatting(ax, labels=labels)
@@ -866,7 +865,7 @@ class NavigationObsPBEnv(gym.Env):
             ax.set_xlabel(r'$\theta={:.0f}^\circ$'.format(theta*180/np.pi), fontsize=28)
 
 
-    def plot_v_values(self, q_func, device, fig, ax, theta=np.pi/2,
+    def plot_v_values(self, q_func, fig, ax, theta=np.pi/2,
             boolPlot=False, cbarPlot=True, vmin=-1, vmax=1, nx=101, ny=101,
             cmap='seismic', normalize_v=False, actor=None):
         """
@@ -874,7 +873,6 @@ class NavigationObsPBEnv(gym.Env):
 
         Args:
             q_func (object): agent's Q-network.
-            device (str): agent's device.
             fig (matplotlib.figure)
             ax (matplotlib.axes.Axes)
             theta (float, optional): if provided, fix the car's heading angle to
@@ -893,7 +891,7 @@ class NavigationObsPBEnv(gym.Env):
         #== Plot V ==
         if theta == None:
             theta = 2.0 * np.random.uniform() * np.pi
-        v, xs, ys = self.get_value(q_func, device, theta, nx, ny, actor)
+        v, xs, ys = self.get_value(q_func, theta, nx, ny)
 
         if boolPlot:
             im = ax.imshow(v.T>0., interpolation='none', extent=axStyle[0],
@@ -914,7 +912,9 @@ class NavigationObsPBEnv(gym.Env):
                 cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=16)
 
 
-    def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, toEnd=False, states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, c='k', lw=2, zorder=2):
+    def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, endType='TF',
+            states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
+            c='k', lw=2, zorder=2):
         """
         plot_trajectories: plot trajectories given the agent's Q-network.
 
@@ -923,8 +923,7 @@ class NavigationObsPBEnv(gym.Env):
             ax (matplotlib.axes.Axes).
             num_rnd_traj (int, optional): Defaults to None.
             T (int, optional): the maximum length of the trajectory. Defaults to 250.
-            toEnd (bool, optional): simulate the trajectory until the robot crosses
-                the boundary or not. Defaults to False.
+            endType (str, optional): when to end the rollout. Defaults to 'TF'.
             states (np.ndarray, optional): if provided, set the initial states to
                 its value. Defaults to None.
             theta (float, optional): if provided, set the theta to its value.
@@ -946,7 +945,7 @@ class NavigationObsPBEnv(gym.Env):
                 (len(states) == num_rnd_traj))
 
         trajectories, results, minVs = self.simulate_trajectories(
-            policy, num_rnd_traj=num_rnd_traj, T=T, toEnd=toEnd,
+            policy, num_rnd_traj=num_rnd_traj, T=T, endType=endType,
             states=states, theta=theta, sample_inside_obs=sample_inside_obs,
             sample_inside_tar=sample_inside_tar)
 

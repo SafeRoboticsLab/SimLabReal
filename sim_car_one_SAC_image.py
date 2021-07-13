@@ -2,18 +2,13 @@
 # Authors: Kai-Chieh Hsu ( kaichieh@princeton.edu )
 #           Allen Z. Ren ( allen.ren@princeton.edu )
 
-# This experiment runs double deep Q-network with the discounted reach-avoid
-# Bellman equation (DRABE) proposed in [RSS21] on a 3-dimensional Dubins car
-# problem. We use this script to generate Fig. 5 in the paper.
-
 # Examples:
     # RA: python3 sim_car_one_SAC_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 300 -cp 140 -ut 10 -nx 21 -sm -mc 1000 -n tmp
+    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -sm -mc 1000 -m safety -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
 
-import pretty_errors
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -42,63 +37,73 @@ parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
 parser.add_argument("-rnd", "--randomSeed",     help="random seed",
     default=0,      type=int)
 parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
-    default=20,    type=int)
-parser.add_argument("-mes",  "--maxEvalSteps",   help="maximum eval steps",
+    default=100,    type=int)
+parser.add_argument("-mes", "--maxEvalSteps",   help="maximum eval steps",
     default=100,    type=int)
 parser.add_argument("-ts",  "--targetScaling",  help="scaling of ell",
     default=1.,     type=float)
 
 # training scheme
-parser.add_argument("-w",   "--warmup",         help="warmup Q-network",
+parser.add_argument("-w",   "--warmup",             help="warmup Q-network",
     action="store_true")
-parser.add_argument("-wi",  "--warmupIter",     help="warmup iteration",
+parser.add_argument("-wi",  "--warmupIter",         help="warmup iteration",
     default=10000,  type=int)
-parser.add_argument("-wbr",  "--warmupBufferRatio",  help="warmup buffer ratio",
+parser.add_argument("-wbr", "--warmupBufferRatio",  help="warmup buffer ratio",
     default=1.0, type=float)
-parser.add_argument("-mu",  "--maxUpdates",     help="maximal #gradient updates",
+parser.add_argument("-mu",  "--maxUpdates",         help="maximal #gradient updates",
     default=800000, type=int)
-parser.add_argument("-ut",  "--updateTimes",    help="hyper-param. update times",
+parser.add_argument("-ut",  "--updateTimes",        help="hyper-param. update times",
     default=20,     type=int)
-parser.add_argument("-mc",  "--memoryCapacity", help="memoryCapacity",
+parser.add_argument("-mc",  "--memoryCapacity",     help="memoryCapacity",
     default=50000,  type=int)
-parser.add_argument("-cp",  "--checkPeriod",    help="check period",
+parser.add_argument("-cp",  "--checkPeriod",        help="check period",
     default=1000,  type=int)
-parser.add_argument("-bs",  "--batchSize",      help="batch size",
+parser.add_argument("-bs",  "--batchSize",          help="batch size",
     default=128,  type=int)
 
 # hyper-parameters
-parser.add_argument("-a",   "--annealing",      help="gamma annealing",
+parser.add_argument("-a",   "--annealing",                  help="gamma annealing",
     action="store_true")
+parser.add_argument("-lr",  "--learningRate",               help="learning rate",
+    default=1e-3,   type=float)
+parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate decay",
+    default=1.0,   type=float)
+parser.add_argument("-g",   "--gamma",                      help="contraction coeff.",
+    default=0.999, type=float)
+parser.add_argument("-al",  "--alpha",                      help="alpha",
+    default=0.2, type=float)
+parser.add_argument("-lal", "--learn_alpha",                help="learn alpha",
+    action="store_true")
+parser.add_argument("-ues", "--optimize_freq",              help="optimization freq.",
+    default=100, type=int)
+parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
+    default=100, type=int)
+
+# NN architecture
 parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
     action="store_true")
 parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
     action="store_true")
-parser.add_argument("-arc", "--mlp_dim",   help="NN architecture",
-    default=[[64, 64], [128, 128]],     nargs="*", type=int)
+parser.add_argument("-d_c", "--dim_critic",     help="critic mlp dimension",
+    default=[128, 128], nargs="*", type=int)
+parser.add_argument("-d_a", "--dim_actor",      help="actor mlp dimension",
+    default=[64, 64],   nargs="*", type=int)
 parser.add_argument("-nch", "--n_channel",      help="NN architecture",
     default=[16, 32, 64],   nargs="*", type=int)
 parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
     default=[5, 5, 3],      nargs="*", type=int)
-parser.add_argument("-lr",  "--learningRate",   help="learning rate",
-    default=1e-3,   type=float)
-parser.add_argument("-lrd",  "--learningRateDecay",   help="learning rate decay",
-    default=1.0,   type=float)
-parser.add_argument("-g",   "--gamma",          help="contraction coeff.",
-    default=0.999, type=float)
 parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
-parser.add_argument("-al",   "--alpha",          help="alpha",
-    default=0.2, type=float)
-parser.add_argument("-lal",  "--learn_alpha",    help="learn alpha",
-    action="store_true")
-parser.add_argument("-ues",  "--optimize_freq",    help="optimize after  some samples", default=100, type=int)
-parser.add_argument("-nmo",  "--num_update_per_optimize",    help="number of updates per optimize", default=128, type=int)
+# parser.add_argument("-arc", "--mlp_dim",        help="NN architecture",
+#     default=[[64, 64], [128, 128]],     nargs="*", type=int)
 
 # RL type
-parser.add_argument("-ur",   "--use_RA",        help="mode",
-    action="store_true")
+parser.add_argument("-m",   "--mode",           help="mode",
+    default='RA',   type=str)
 parser.add_argument("-tt",  "--terminalType",   help="terminal value",
     default='g',    type=str)
+# parser.add_argument("-ur",   "--use_RA",        help="mode",
+#     action="store_true")
 
 # file
 parser.add_argument("-vis",  "--visdom",        help="use Visdom",
@@ -121,22 +126,23 @@ print(args)
 
 
 #== CONFIGURATION ==
-env_name = 'navigation_pac_ra_disc-v0'
+env_name = 'navigation_pac_ra_cont-v0'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
 
-fn = args.name + '-' + args.doneType
+fn = args.name + '-' + args.mode + '-' + args.doneType
 if args.showTime:
     fn = fn + '-' + timestr
 
-outFolder = os.path.join(args.outFolder, 'car-DDQN-image', fn)
+outFolder = os.path.join(args.outFolder, 'car-SAC-image', fn)
 print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
 
 #== Environment ==
+print("\n== Environment Information ==")
 render = False
 img_sz = 48
 env = NavigationObsPBEnvCont(render=render, img_H=img_sz, img_W=img_sz,
@@ -149,6 +155,7 @@ actionLim = env.action_lim
 print("State Dimension: {:d}, Action Dimension: {:d}".format(
     stateDim, actionDim))
 env.report()
+env.reset()
 
 #== Get and Plot max{l_x, g_x} ==
 if args.plotFigure or args.storeFigure:
@@ -217,47 +224,66 @@ if args.plotFigure or args.storeFigure:
         plt.pause(0.001)
     plt.close()
 
+
 #== AGENT ==
-print("== Agent Information ==")
+print("\n== Agent Information ==")
 if args.annealing:
     GAMMA_END = 0.9999
 else:
     GAMMA_END = args.gamma
 
+MLP_DIM = {'critic':args.dim_critic, 'actor':args.dim_actor}
+ACTIVATION = {'critic':args.actType, 'actor':args.actType}
 
 CONFIG = SACImageConfig(
+    # Environment
     ENV_NAME=env_name,
-    DEVICE=device,
     SEED=args.randomSeed,
+    IMG_SZ=img_sz,
+    ACTION_MAG=float(actionLim),
+    ACTION_DIM=actionDim,
+    # Agent
+    DEVICE=device,
+    # Training Setting
     MAX_UPDATES=maxUpdates,
     MAX_EP_STEPS=args.maxSteps,
-    BATCH_SIZE=args.batchSize,
     MEMORY_CAPACITY=args.memoryCapacity,
+    BATCH_SIZE=args.batchSize,
+    ALPHA=args.alpha,
+    LEARN_ALPHA=args.learn_alpha,
+    # RL Type
+    MODE=args.mode,
+    TERMINAL_TYPE=args.terminalType,
+    # NN Architecture
+    USE_BN=args.batch_norm,
+    USE_SM=args.softmax,
+    KERNEL_SIZE=args.kernel_sz,
+    N_CHANNEL=args.n_channel,
+    MLP_DIM=MLP_DIM,
+    ACTIVATION=ACTIVATION,
+    # Learning Rate and Discount Factor Scheduler
     GAMMA=args.gamma,
     GAMMA_PERIOD=updatePeriod,
     GAMMA_END=GAMMA_END,
     LR_C=args.learningRate,
     LR_C_PERIOD=updatePeriod,
+    LR_C_END=args.learningRate/10,
     LR_C_DECAY=args.learningRateDecay,
-    MAX_MODEL=50,
-    LEARN_ALPHA=args.learn_alpha,
-    ALPHA=args.alpha,
-    IMG_SZ=img_sz,
-    MLP_DIM=args.mlp_dim,
-    ACTIVATION=args.actType,
-    KERNEL_SIZE=args.kernel_sz,
-    N_CHANNEL=args.n_channel,
-    USE_BN=args.batch_norm,
-    USE_SM=args.softmax,
-    ACTION_MAG=float(actionLim),
-    ACTION_DIM=actionDim,
-    USE_RA=args.use_RA,
+    LR_A=args.learningRate,
+    LR_A_PERIOD=updatePeriod,
+    LR_A_END=args.learningRate/10,
+    LR_A_DECAY=args.learningRateDecay,
+    LR_Al=5e-4,
+    LR_Al_END=1e-5,
+    LR_Al_PERIOD=updatePeriod,
+    LR_Al_DECAY=0.9,
 )
 
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
-agent = SAC_image(CONFIG, terminalType=args.terminalType)
-print(f'Total parameters in actor: {sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)}')
+agent = SAC_image(CONFIG)
+print('Total parameters in actor: {}'.format(
+    sum(p.numel() for p in agent.actor.parameters() if p.requires_grad) ))
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
@@ -270,7 +296,6 @@ if args.warmup:
         lossList = lossArray.reshape(-1)
         fig, ax = plt.subplots(1,1, figsize=(4, 4))
         tmp = np.arange(500, args.warmupIter)
-        # tmp = np.arange(args.warmupIter)
         ax.plot(tmp, lossList[tmp], 'b-')
         ax.set_xlabel('Iteration', fontsize=18)
         ax.set_ylabel('Loss', fontsize=18)
@@ -284,21 +309,13 @@ if args.warmup:
             plt.pause(0.001)
         plt.close()
 
-# agent.initBuffer(env)
-# transitions = agent.memory.sample(5)
-# batch = Transition(*zip(*transitions))
-# non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x = \
-#             agent.unpack_batch(batch)
-# print(action)
-# print(l_x)
-
 
 #== Learning ==
 trainRecords, trainProgress = agent.learn(
     env, warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
     warmupQ=False, MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
     MAX_EVAL_EP_STEPS=args.maxEvalSteps,
-    optimizeFreq=args.optimize_freq, 
+    optimizeFreq=args.optimize_freq,
     numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
@@ -349,7 +366,19 @@ if args.plotFigure or args.storeFigure:
     # print('We pick model with success rate-{:.3f}'.format(successRate))
     idx = trainProgress.shape[0]
     agent.restore(idx*args.checkPeriod, outFolder)
-    policy = lambda obs: agent.select_action(obs, explore=False)[1]
+    def policy(obs):
+        obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
+        return agent.actor(obsTensor).detach().cpu().detach().numpy()[0]
+    # def q_func(obs):
+    #     obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
+    #     u = agent.actor(obsTensor).detach()
+    #     v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+    #     return v
+
+    if args.mode == 'safety':
+        rolloutEndType = 'fail'
+    else:
+        rolloutEndType = 'TF'
 
     nx = args.nx
     ny = nx
@@ -357,7 +386,8 @@ if args.plotFigure or args.storeFigure:
     ys = np.linspace(env.bounds[1,0], env.bounds[1,1], ny)
 
     resultMtx  = np.empty((nx, ny), dtype=int)
-    actDistMtx = np.empty((nx, ny), dtype=int)
+    actDistMtx = np.empty((nx, ny), dtype=float)
+    valueMtx = np.empty((nx, ny), dtype=float)
     it = np.nditer(resultMtx, flags=['multi_index'])
 
     while not it.finished:
@@ -369,11 +399,14 @@ if args.plotFigure or args.storeFigure:
         state = np.array([x, y, 0.])
         obs = env._get_obs(state)
         obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
-        action_index = agent.Q_network(obsTensor).min(dim=1)[1].cpu().detach().numpy()
-        actDistMtx[idx] = action_index
+        # u = agent.actor(obsTensor).detach().cpu().numpy()[0]
+        u = agent.actor(obsTensor).detach()
+        v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        actDistMtx[idx] = u.cpu().numpy()[0]
+        valueMtx[idx] = v
 
         _, result, _, _ = env.simulate_one_trajectory(
-                            policy, T=250, state=state, toEnd=False)
+            policy, T=args.maxEvalSteps, state=state, endType=rolloutEndType)
         resultMtx[idx] = result
         it.iternext()
 
@@ -383,7 +416,7 @@ if args.plotFigure or args.storeFigure:
     #= Action
     ax = axes[2]
     im = ax.imshow(actDistMtx.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
+        origin="lower", cmap='seismic', vmin=-actionLim, vmax=actionLim, zorder=-1)
     ax.set_xlabel('Action', fontsize=24)
 
     #= Rollout
@@ -391,15 +424,15 @@ if args.plotFigure or args.storeFigure:
     im = ax.imshow(resultMtx.T != 1, interpolation='none', extent=axStyle[0],
         origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
     env.plot_trajectories(policy, ax, num_rnd_traj=5, theta=0.,
-        toEnd=False, c='w', lw=1.5, T=250)
+        endType=rolloutEndType, c='w', lw=1.5, T=args.maxSteps)
     ax.set_xlabel('Rollout RA', fontsize=24)
 
     #= Value
     ax = axes[0]
-    v, xs, ys = env.get_value(agent.Q_network, agent.device, theta=0, nx=nx, ny=ny)
-    im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
+    # v, xs, ys = env.get_value(q_func, theta=0, nx=nx, ny=ny)
+    im = ax.imshow(valueMtx.T, interpolation='none', extent=axStyle[0],
         origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
-    CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,
+    CS = ax.contour(xs, ys, valueMtx.T, levels=[0], colors='k', linewidths=2,
         linestyles='dashed')
     ax.set_xlabel('Value', fontsize=24)
 

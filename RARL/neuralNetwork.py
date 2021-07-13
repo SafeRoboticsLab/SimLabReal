@@ -28,6 +28,13 @@ class Sin(nn.Module):
         return torch.sin(input) # simply apply already implemented sin
 
 
+activationDict =  nn.ModuleDict({
+    "ReLU": nn.ReLU(),
+    "Tanh": nn.Tanh(),
+    "Sin": Sin(),
+    "Identity": nn.Identity()
+})
+
 class MLP(nn.Module):
     """
     model: Constructs a fully-connected neural network with flexible depth, width
