@@ -270,7 +270,7 @@ CONFIG = SACImageConfig(
     LR_A_PERIOD=updatePeriod,
     LR_A_END=args.learningRate/10,
     LR_A_DECAY=args.learningRateDecay,
-    LR_Al=5e-4, 
+    LR_Al=5e-4,
     LR_Al_END=1e-5,
     LR_Al_PERIOD=updatePeriod,
     LR_Al_DECAY=0.9,
@@ -279,7 +279,8 @@ CONFIG = SACImageConfig(
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
 agent = SAC_image(CONFIG)
-print(f'Total parameters in actor: {sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)}')
+print('Total parameters in actor: {}'.format(
+    sum(p.numel() for p in agent.actor.parameters() if p.requires_grad) ))
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
@@ -292,7 +293,6 @@ if args.warmup:
         lossList = lossArray.reshape(-1)
         fig, ax = plt.subplots(1,1, figsize=(4, 4))
         tmp = np.arange(500, args.warmupIter)
-        # tmp = np.arange(args.warmupIter)
         ax.plot(tmp, lossList[tmp], 'b-')
         ax.set_xlabel('Iteration', fontsize=18)
         ax.set_ylabel('Loss', fontsize=18)
@@ -362,15 +362,14 @@ if args.plotFigure or args.storeFigure:
     # print('We pick model with success rate-{:.3f}'.format(successRate))
     idx = trainProgress.shape[0]
     agent.restore(idx*args.checkPeriod, outFolder)
-    # policy = lambda obs: agent.select_action(obs, explore=False)[1]
     def policy(obs):
         obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
         return agent.actor(obsTensor).detach().cpu().detach().numpy()[0]
-    def q_func(obs):
-        obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
-        u = agent.actor(obsTensor).detach()
-        v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-        return v
+    # def q_func(obs):
+    #     obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
+    #     u = agent.actor(obsTensor).detach()
+    #     v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+    #     return v
 
     if args.mode == 'safety':
         rolloutEndType = 'fail'
@@ -384,6 +383,7 @@ if args.plotFigure or args.storeFigure:
 
     resultMtx  = np.empty((nx, ny), dtype=int)
     actDistMtx = np.empty((nx, ny), dtype=float)
+    valueMtx = np.empty((nx, ny), dtype=float)
     it = np.nditer(resultMtx, flags=['multi_index'])
 
     while not it.finished:
@@ -395,8 +395,11 @@ if args.plotFigure or args.storeFigure:
         state = np.array([x, y, 0.])
         obs = env._get_obs(state)
         obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
-        u = agent.actor(obsTensor).detach().cpu().numpy()[0]
-        actDistMtx[idx] = u
+        # u = agent.actor(obsTensor).detach().cpu().numpy()[0]
+        u = agent.actor(obsTensor).detach()
+        v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        actDistMtx[idx] = u.cpu().numpy()[0]
+        valueMtx[idx] = v
 
         _, result, _, _ = env.simulate_one_trajectory(
             policy, T=args.maxSteps, state=state, endType=rolloutEndType)
@@ -422,10 +425,10 @@ if args.plotFigure or args.storeFigure:
 
     #= Value
     ax = axes[0]
-    v, xs, ys = env.get_value(q_func, theta=0, nx=nx, ny=ny)
-    im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
+    # v, xs, ys = env.get_value(q_func, theta=0, nx=nx, ny=ny)
+    im = ax.imshow(valueMtx.T, interpolation='none', extent=axStyle[0],
         origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
-    CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,
+    CS = ax.contour(xs, ys, valueMtx.T, levels=[0], colors='k', linewidths=2,
         linestyles='dashed')
     ax.set_xlabel('Value', fontsize=24)
 
