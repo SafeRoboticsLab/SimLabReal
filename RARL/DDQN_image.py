@@ -411,6 +411,10 @@ class DDQN_image(DDQN):
                 # Check after fixed number of gradient updates
                 if self.cntUpdate != 0 and self.cntUpdate % checkPeriod == 0:
                     policy = lambda obs: self.select_action(obs, explore=False)[1]
+                    def q_func(obs):
+                        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+                        v = self.Q_network(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+                        return v
                     results = env.simulate_trajectories(policy,
                         T=MAX_EP_STEPS, num_rnd_traj=numRndTraj, endType=endType,
                         sample_inside_obs=False, sample_inside_tar=False)[1]
@@ -446,11 +450,10 @@ class DDQN_image(DDQN):
                     if plotFigure or storeFigure:
                         self.Q_network.eval()
                         if showBool:
-                            env.visualize(self.Q_network, policy, self.device,
-                                vmin=0, boolPlot=True)
+                            env.visualize(q_func, policy, vmin=0, boolPlot=True)
                         else:
                             normalize_v = not (self.mode == 'RA' or self.mode == 'safety')
-                            env.visualize(self.Q_network, policy, self.device,
+                            env.visualize(q_func, policy,
                                 vmin=vmin, vmax=vmax, cmap='seismic', normalize_v=normalize_v)
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,

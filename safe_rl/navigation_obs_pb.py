@@ -541,14 +541,13 @@ class NavigationObsPBEnv(gym.Env):
         return states, heuristic_v
 
 
-    def get_value(self, q_func, device, theta, nx=101, ny=101):
+    def get_value(self, q_func, theta, nx=101, ny=101):
         """
         get_value: get the state values given the Q-network. We fix the heading
             angle of the car to `theta`.
 
         Args:
             q_func (object): agent's Q-network.
-            device (str): agent's device.
             theta (float): the heading angle of the car.
             nx (int, optional): # points in x-axis. Defaults to 101.
             ny (int, optional): # points in y-axis. Defaults to 101.
@@ -571,8 +570,9 @@ class NavigationObsPBEnv(gym.Env):
             else:
                 state = np.array([x, y, theta])
                 obs = self._get_obs(state)
-                obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
-                v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+                # obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
+                # v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+                v[idx] = q_func(obs)
             it.iternext()
         return v, xs, ys
 
@@ -807,7 +807,7 @@ class NavigationObsPBEnv(gym.Env):
 
 
     #== Plotting ==
-    def visualize(  self, q_func, policy, device, rndTraj=False, num_rnd_traj=10,
+    def visualize(  self, q_func, policy, rndTraj=False, num_rnd_traj=10,
                     vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
                     labels=None, boolPlot=False, plotV=True, normalize_v=False):
         """
@@ -816,7 +816,6 @@ class NavigationObsPBEnv(gym.Env):
         Args:
             q_func (object): agent's Q-network.
             policy (func): agent's policy.
-            device (str): agent's device.
             rndTraj (bool, optional): random initialization or not. Defaults to False.
             num_rnd_traj (int, optional): number of states. Defaults to None.
             vmin (int, optional): vmin in colormap. Defaults to -1.
@@ -825,7 +824,6 @@ class NavigationObsPBEnv(gym.Env):
             ny (int, optional): # points in y-axis. Defaults to 101.
             cmap (str, optional): color map. Defaults to 'seismic'.
             labels (list, optional): x- and y- labels. Defaults to None.
-                v[idx] = q_func(obsTensor).max(dim=1)[0].cpu().detach().numpy()
             boolPlot (bool, optional): plot the binary values. Defaults to False.
         """
         thetaList = [np.pi, np.pi/2, 0]
@@ -846,7 +844,7 @@ class NavigationObsPBEnv(gym.Env):
 
             #== Plot V ==
             if plotV:
-                self.plot_v_values( q_func, device, fig, ax, theta=theta,
+                self.plot_v_values( q_func, fig, ax, theta=theta,
                                     boolPlot=boolPlot, cbarPlot=cbarPlot,
                                     vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap,
                                     normalize_v=normalize_v)
@@ -867,7 +865,7 @@ class NavigationObsPBEnv(gym.Env):
             ax.set_xlabel(r'$\theta={:.0f}^\circ$'.format(theta*180/np.pi), fontsize=28)
 
 
-    def plot_v_values(self, q_func, device, fig, ax, theta=np.pi/2,
+    def plot_v_values(self, q_func, fig, ax, theta=np.pi/2,
             boolPlot=False, cbarPlot=True, vmin=-1, vmax=1, nx=101, ny=101,
             cmap='seismic', normalize_v=False):
         """
@@ -875,7 +873,6 @@ class NavigationObsPBEnv(gym.Env):
 
         Args:
             q_func (object): agent's Q-network.
-            device (str): agent's device.
             fig (matplotlib.figure)
             ax (matplotlib.axes.Axes)
             theta (float, optional): if provided, fix the car's heading angle to
@@ -894,7 +891,7 @@ class NavigationObsPBEnv(gym.Env):
         #== Plot V ==
         if theta == None:
             theta = 2.0 * np.random.uniform() * np.pi
-        v, xs, ys = self.get_value(q_func, device, theta, nx, ny)
+        v, xs, ys = self.get_value(q_func, theta, nx, ny)
 
         if boolPlot:
             im = ax.imshow(v.T>0., interpolation='none', extent=axStyle[0],

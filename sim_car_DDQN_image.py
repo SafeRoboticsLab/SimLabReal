@@ -333,6 +333,10 @@ if args.plotFigure or args.storeFigure:
     idx = trainProgress.shape[0]
     agent.restore(idx*args.checkPeriod, outFolder)
     policy = lambda obs: agent.select_action(obs, explore=False)[1]
+    def q_func(obs):
+        obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
+        v = agent.Q_network(obsTensor).min(dim=1)[0].cpu().detach().numpy()
+        return v
 
     nx = args.nx
     ny = nx
@@ -379,7 +383,7 @@ if args.plotFigure or args.storeFigure:
 
     #= Value
     ax = axes[0]
-    v, xs, ys = env.get_value(agent.Q_network, agent.device, theta=0, nx=nx, ny=ny)
+    v, xs, ys = env.get_value(q_func, theta=0, nx=nx, ny=ny)
     im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
         origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
     CS = ax.contour(xs, ys, v.T, levels=[0], colors='k', linewidths=2,
