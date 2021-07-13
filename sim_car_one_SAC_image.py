@@ -77,7 +77,7 @@ parser.add_argument("-lal", "--learn_alpha",                help="learn alpha",
 parser.add_argument("-ues", "--optimize_freq",              help="optimization freq.",
     default=100, type=int)
 parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
-    default=128, type=int)
+    default=100, type=int)
 
 # NN architecture
 parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
