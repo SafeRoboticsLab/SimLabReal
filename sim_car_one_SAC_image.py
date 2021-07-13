@@ -403,7 +403,7 @@ if args.plotFigure or args.storeFigure:
         valueMtx[idx] = v
 
         _, result, _, _ = env.simulate_one_trajectory(
-            policy, T=args.maxSteps, state=state, endType=rolloutEndType)
+            policy, T=args.maxEvalSteps, state=state, endType=rolloutEndType)
         resultMtx[idx] = result
         it.iternext()
 
