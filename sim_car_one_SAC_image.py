@@ -227,8 +227,12 @@ if args.plotFigure or args.storeFigure:
 print("\n== Agent Information ==")
 if args.annealing:
     GAMMA_END = 0.9999
+    GAMMA_PERIOD = updatePeriod
+    LR_Al_PERIOD = int(updatePeriod/10)
 else:
     GAMMA_END = args.gamma
+    GAMMA_PERIOD = maxUpdates
+    LR_Al_PERIOD = updatePeriod
 
 MLP_DIM = {'critic':args.dim_critic, 'actor':args.dim_actor}
 ACTIVATION = {'critic':args.actType, 'actor':args.actType}
@@ -261,7 +265,7 @@ CONFIG = SACImageConfig(
     ACTIVATION=ACTIVATION,
     # Learning Rate and Discount Factor Scheduler
     GAMMA=args.gamma,
-    GAMMA_PERIOD=updatePeriod,
+    GAMMA_PERIOD=GAMMA_PERIOD,
     GAMMA_END=GAMMA_END,
     LR_C=args.learningRate,
     LR_C_PERIOD=updatePeriod,
@@ -273,7 +277,7 @@ CONFIG = SACImageConfig(
     LR_A_DECAY=args.learningRateDecay,
     LR_Al=5e-4,
     LR_Al_END=1e-5,
-    LR_Al_PERIOD=updatePeriod,
+    LR_Al_PERIOD=LR_Al_PERIOD,
     LR_Al_DECAY=0.9,
 )
 
