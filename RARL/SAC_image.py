@@ -1,6 +1,5 @@
 # Please contact the author(s) of this library if you have any questions.
-# Authors: Vicenc Rubies-Royo (vrubies@berkeley.edu)
-#          Kai-Chieh Hsu ( kaichieh@princeton.edu )
+# Authors: Kai-Chieh Hsu ( kaichieh@princeton.edu )
 #          Allen Z. Ren (allen.ren@princeton.edu)
 
 import torch
@@ -212,9 +211,9 @@ class SAC_image(ActorCritic):
 
         non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x = \
             self.unpack_batch(batch)
-        # self.critic.train()
-        # self.criticTarget.eval()
-        # self.actor.eval()
+        self.critic.train()
+        self.criticTarget.eval()
+        self.actor.eval()
 
         #== get Q(s,a) ==
         q1, q2 = self.critic(state, action)  # Used to compute loss (non-target part).
@@ -280,18 +279,17 @@ class SAC_image(ActorCritic):
 
         _, _, state, _, _, _, _ = self.unpack_batch(batch)
 
-        # self.critic.eval()
-        # self.actor.train()
-        # for p in self.critic.parameters():
-        #     p.requires_grad = False
+        self.critic.eval()
+        self.actor.train()
 
         action_sample, log_prob = self.actor.sample(state, detach_encoder=True)
-        q_pi_1, q_pi_2 = self.critic(state, action_sample, detach_encoder=True)
+        with torch.no_grad():
+            q_pi_1, q_pi_2 = self.critic(state, action_sample, detach_encoder=True)
 
-        if self.mode == 'RA' or self.mode=='safety':
-            q_pi = torch.max(q_pi_1, q_pi_2)
-        elif self.mode == 'performance':
-            q_pi = torch.min(q_pi_1, q_pi_2)
+            if self.mode == 'RA' or self.mode=='safety':
+                q_pi = torch.max(q_pi_1, q_pi_2)
+            elif self.mode == 'performance':
+                q_pi = torch.min(q_pi_1, q_pi_2)
 
         # Obj: min_theta E[ Q(s, pi_theta(s)) + alpha * log(pi_theta(s))]
         # loss_pi = (q_pi + self.alpha * log_prob.view(-1)).mean()
@@ -303,11 +301,7 @@ class SAC_image(ActorCritic):
             loss_pi = -loss_q_eval + self.alpha * loss_entropy
         self.actorOptimizer.zero_grad()
         loss_pi.backward()
-        # clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
         self.actorOptimizer.step()
-
-        # for p in self.critic.parameters():
-        #     p.requires_grad = True
 
         # Automatic temperature tuning
         loss_alpha = (self.alpha *

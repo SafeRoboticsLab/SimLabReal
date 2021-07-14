@@ -75,6 +75,7 @@ docs/_build/
 target/
 
 # Jupyter Notebook
+*.ipynb
 .ipynb_checkpoints
 
 # pyenv
@@ -113,3 +114,7 @@ venv.bak/
 
 # PyCharm
 .idea
+
+# mac and vscode
+*.DS_Store
+*.code-workspace
