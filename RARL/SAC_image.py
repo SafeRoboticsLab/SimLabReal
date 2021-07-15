@@ -61,7 +61,7 @@ class SAC_image(ActorCritic):
         self.img_sz = CONFIG.IMG_SZ
         self.kernel_sz = CONFIG.KERNEL_SIZE
         self.n_channel = CONFIG.N_CHANNEL
-        self.use_bn = CONFIG.USE_BN
+        self.use_ln = CONFIG.USE_LN
         self.use_sm = CONFIG.USE_SM
         self.activation_actor = CONFIG.ACTIVATION['actor']
         self.activation_critic = CONFIG.ACTIVATION['critic']
@@ -85,6 +85,8 @@ class SAC_image(ActorCritic):
                                             img_sz=self.img_sz,
                                             kernel_sz=self.kernel_sz,
                                             n_channel=self.n_channel,
+                                            use_sm=self.use_sm,
+                                            use_ln=self.use_ln,
                                             device=self.device,
                                             verbose=verbose
         )
@@ -100,6 +102,8 @@ class SAC_image(ActorCritic):
                                     img_sz=self.img_sz,
                                     kernel_sz=self.kernel_sz,
                                     n_channel=self.n_channel,
+                                    use_sm=self.use_sm,
+                                    use_ln=self.use_ln,
                                     device=self.device,
                                     verbose=verbose
         )

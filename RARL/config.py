@@ -300,6 +300,7 @@ class SACImageConfig():
         TERMINAL_TYPE='g',
         # NN Architecture
         USE_BN=False,
+        USE_LN=True,
         USE_SM=True,
         KERNEL_SIZE=[5,5,3],
         N_CHANNEL=[16,32,64],
@@ -338,6 +339,7 @@ class SACImageConfig():
 
         # NN Architecture
         self.USE_BN = USE_BN
+        self.USE_LN = USE_LN
         self.USE_SM = USE_SM
         self.KERNEL_SIZE = KERNEL_SIZE
         self.N_CHANNEL = N_CHANNEL

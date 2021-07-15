@@ -79,10 +79,9 @@ parser.add_argument("-ues", "--optimize_freq",              help="optimization f
 parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
     default=100, type=int)
 
-# NN architecture
-parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
-    action="store_true")
-parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
+# NN architecture:
+# ? I comment out use_sm and use_bn since the model we have assume using sm but not bn.
+parser.add_argument("-ln",  "--layer_norm",     help="layer normalization",
     action="store_true")
 parser.add_argument("-d_c", "--dim_critic",     help="critic mlp dimension",
     default=[128, 128], nargs="*", type=int)
@@ -94,6 +93,10 @@ parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
     default=[5, 5, 3],      nargs="*", type=int)
 parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
+# parser.add_argument("-sm",  "--softmax",        help="spatial softmax",
+#     action="store_true")
+# parser.add_argument("-bn",  "--batch_norm",     help="batch normalization",
+#     action="store_true")
 # parser.add_argument("-arc", "--mlp_dim",        help="NN architecture",
 #     default=[[64, 64], [128, 128]],     nargs="*", type=int)
 
@@ -257,8 +260,9 @@ CONFIG = SACImageConfig(
     MODE=args.mode,
     TERMINAL_TYPE=args.terminalType,
     # NN Architecture
-    USE_BN=args.batch_norm,
-    USE_SM=args.softmax,
+    USE_BN=False,
+    USE_LN=args.layer_norm,
+    USE_SM=True,
     KERNEL_SIZE=args.kernel_sz,
     N_CHANNEL=args.n_channel,
     MLP_DIM=MLP_DIM,
