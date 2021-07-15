@@ -283,13 +283,12 @@ class SAC_image(ActorCritic):
         self.actor.train()
 
         action_sample, log_prob = self.actor.sample(state, detach_encoder=True)
-        with torch.no_grad():
-            q_pi_1, q_pi_2 = self.critic(state, action_sample, detach_encoder=True)
+        q_pi_1, q_pi_2 = self.critic(state, action_sample, detach_encoder=True)
 
-            if self.mode == 'RA' or self.mode=='safety':
-                q_pi = torch.max(q_pi_1, q_pi_2)
-            elif self.mode == 'performance':
-                q_pi = torch.min(q_pi_1, q_pi_2)
+        if self.mode == 'RA' or self.mode=='safety':
+            q_pi = torch.max(q_pi_1, q_pi_2)
+        elif self.mode == 'performance':
+            q_pi = torch.min(q_pi_1, q_pi_2)
 
         # Obj: min_theta E[ Q(s, pi_theta(s)) + alpha * log(pi_theta(s))]
         # loss_pi = (q_pi + self.alpha * log_prob.view(-1)).mean()
