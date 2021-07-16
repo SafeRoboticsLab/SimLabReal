@@ -11,7 +11,7 @@ import torch
 # import os
 # os.sys.path.append(os.path.join(os.getcwd(), '.'))
 from safe_rl.util_geom import euler2rot
-from gym_reachability.gym_reachability.envs.env_utils import plot_arc, plot_circle
+from gym_reachability.gym_reachability.envs.env_utils import plot_circle
 
 
 def rgba2rgb( rgba, background=(255,255,255) ):

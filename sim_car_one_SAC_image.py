@@ -415,6 +415,11 @@ if args.plotFigure or args.storeFigure:
         resultMtx[idx] = result
         it.iternext()
 
+    if args.mode == 'safety':
+        resultVisMtx = (resultMtx == -1)
+    else:
+        resultVisMtx = (resultMtx != 1)
+
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
     axStyle = env.get_axes()
 
@@ -426,7 +431,7 @@ if args.plotFigure or args.storeFigure:
 
     #= Rollout
     ax = axes[1]
-    im = ax.imshow(resultMtx.T != 1, interpolation='none', extent=axStyle[0],
+    im = ax.imshow(resultVisMtx.T, interpolation='none', extent=axStyle[0],
         origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
     env.plot_trajectories(policy, ax, num_rnd_traj=5, theta=0.,
         endType=rolloutEndType, c='w', lw=1.5, T=args.maxSteps)
