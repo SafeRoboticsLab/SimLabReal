@@ -26,10 +26,6 @@ class SAC_image(ActorCritic):
 
         Args:
             CONFIG (Class object): hyper-parameter configuration.
-            actionSpace (Class object): consists of `high` and `low` attributes.
-            dimList (list): consists of dimension lists
-            actType (list, optional): consists of activation types.
-                Defaults to ['Tanh', 'Tanh'].
             verbose (bool, optional): print info or not. Defaults to True.
         """
         super(SAC_image, self).__init__('SAC', CONFIG)
