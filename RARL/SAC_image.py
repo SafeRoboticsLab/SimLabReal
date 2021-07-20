@@ -29,7 +29,6 @@ class SAC_image(ActorCritic):
             verbose (bool, optional): print info or not. Defaults to True.
         """
         super(SAC_image, self).__init__('SAC', CONFIG)
-        self.CONFIG = CONFIG
 
         #= alpha-related hyper-parameters
         self.init_alpha = CONFIG.ALPHA
