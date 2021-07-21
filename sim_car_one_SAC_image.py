@@ -94,16 +94,12 @@ parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
     default=[5, 5, 3],      nargs="*", type=int)
 parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
-# parser.add_argument("-arc", "--mlp_dim",        help="NN architecture",
-#     default=[[64, 64], [128, 128]],     nargs="*", type=int)
 
 # RL type
 parser.add_argument("-m",   "--mode",           help="mode",
     default='RA',   type=str)
 parser.add_argument("-tt",  "--terminalType",   help="terminal value",
     default='g',    type=str)
-# parser.add_argument("-ur",   "--use_RA",        help="mode",
-#     action="store_true")
 
 # file
 parser.add_argument("-vis",  "--visdom",        help="use Visdom",
@@ -323,8 +319,8 @@ trainRecords, trainProgress = agent.learn(
     numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
-    plotFigure=args.plotFigure, storeFigure=args.storeFigure,
-    useVis=args.visdom, visEnvName=args.outFolder.split('/')[-1])
+    plotFigure=args.plotFigure, storeFigure=args.storeFigure)
+    # useVis=args.visdom, visEnvName=args.outFolder.split('/')[-1])
 
 trainDict = {}
 trainDict['trainRecords'] = trainRecords
