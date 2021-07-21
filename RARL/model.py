@@ -52,7 +52,6 @@ class Encoder(torch.nn.Module):
         for module_ind, module in enumerate(self.conv.moduleList):
             for layer_ind, layer in enumerate(module):
                 if isinstance(layer, nn.Conv2d):
-                    # print(layer)
                     tie_weights(src=source.conv.moduleList[module_ind][layer_ind], trg=layer)
 
 
@@ -65,6 +64,7 @@ class SACPiNetwork(torch.nn.Module):
                         img_sz, 
                         kernel_sz,
                         n_channel,
+                        latent_dim=0,
                         use_sm=True,
                         device='cpu',
                         verbose=True,
@@ -84,13 +84,13 @@ class SACPiNetwork(torch.nn.Module):
             dim_conv_out = n_channel[-1]*2 # assume spatial softmax
         else:
             dim_conv_out = n_channel[-1]*img_sz ** 2
-        mlp_dim = [dim_conv_out] + mlp_dim + [actionDim]
+        mlp_dim = [dim_conv_out+latent_dim] + mlp_dim + [actionDim]
 
         # Linear layers
         self.mlp = GaussianPolicy(mlp_dim, actionMag, actType, device, verbose)
 
 
-    def forward(self, image, detach_encoder=False):
+    def forward(self, image, latent=None, detach_encoder=False):
         # Convert to torch
         np_input = False
         if isinstance(image, np.ndarray):
@@ -104,8 +104,14 @@ class SACPiNetwork(torch.nn.Module):
         else:
             B = image.shape[0]
 
-        # Forward pass
+        # Forward thru conv
         conv_out = self.encoder.forward(image, detach=detach_encoder)
+
+        # Append latent
+        if latent is not None:
+            conv_out = torch.cat((conv_out, latent), dim=1)
+
+        # Forward thru mlp
         output = self.mlp(conv_out.view(B, -1))
 
         # Restore dimension
@@ -119,8 +125,10 @@ class SACPiNetwork(torch.nn.Module):
         return output
 
 
-    def sample(self, image, detach_encoder=False):
+    def sample(self, image, latent=None, detach_encoder=False):
         conv_out = self.encoder.forward(image, detach=detach_encoder)
+        if latent is not None:
+            conv_out = torch.cat((conv_out, latent), dim=1)
         output = self.mlp.sample(conv_out)
         return output
 
@@ -133,6 +141,7 @@ class SACTwinnedQNetwork(torch.nn.Module):
                         img_sz, 
                         kernel_sz,
                         n_channel,
+                        latent_dim=0,
                         use_sm=True,
                         device='cpu',
                         verbose=True,
@@ -153,7 +162,7 @@ class SACTwinnedQNetwork(torch.nn.Module):
             dim_conv_out = n_channel[-1]*2 # assume spatial softmax
         else:
             dim_conv_out = n_channel[-1]*img_sz ** 2
-        mlp_dim = [dim_conv_out+actionDim] + mlp_dim + [1]
+        mlp_dim = [dim_conv_out+actionDim+latent_dim] + mlp_dim + [1]
 
         # Double critics
         self.Q1 = nn.Sequential( OrderedDict([
@@ -169,7 +178,7 @@ class SACTwinnedQNetwork(torch.nn.Module):
             print(self.Q1)
 
 
-    def forward(self, image, actions, detach_encoder=False):
+    def forward(self, image, actions, latent=None, detach_encoder=False):
 
         # Convert to torch
         np_input = False
@@ -188,6 +197,11 @@ class SACTwinnedQNetwork(torch.nn.Module):
         conv_out = self.encoder.forward(image, detach=detach_encoder)
         q_input = torch.cat([conv_out.view(B, -1), 
                             actions.view(B, -1)], dim=1)
+
+        # Append latent
+        if latent is not None:
+            q_input = torch.cat((q_input, latent), dim=1)
+
         q1 = self.Q1(q_input)
         q2 = self.Q2(q_input)
 
@@ -385,3 +399,77 @@ class DeterministicPolicy(nn.Module):
         action_target = torch.clamp(action_target, self.a_min, self.a_max)
 
         return action, action_target
+
+
+class Discriminator(torch.nn.Module):
+    def __init__(self, input_n_channel, # usually 2 frames
+                        mlp_dim, 
+                        latent_dim,
+                        img_sz, 
+                        kernel_sz,
+                        n_channel,
+                        use_sm=True,
+                        device='cpu',
+                        verbose=True,
+                        ):
+        super().__init__()
+        self.device = device
+    
+        # Conv layers shared with critic
+        self.encoder = Encoder(input_n_channel,
+                                img_sz,
+                                kernel_sz,
+                                n_channel,
+                                use_sm,
+                                device,
+                                False)
+        if use_sm:
+            dim_conv_out = n_channel[-1]*2 # assume spatial softmax
+        else:
+            dim_conv_out = n_channel[-1]*img_sz ** 2
+        mlp_dim = [dim_conv_out] + mlp_dim + [latent_dim] # stack features from consecutive frames
+
+        # Linear layers
+        self.mean = MLP(mlp_dim, actType='ReLU', verbose=verbose).to(device)
+        # self.log_std = MLP(mlp_dim, actType='ReLU', verbose=verbose).to(device)
+        # self.LOG_STD_MAX = 2
+        # self.LOG_STD_MIN = -10
+
+
+    def forward(self, image, latent, detach_encoder=False):
+        """
+        Get log probability directly
+        """
+        # Convert to torch
+        np_input = False
+        if isinstance(image, np.ndarray):
+            image = torch.from_numpy(image).float().to(self.device)
+            np_input = True
+
+        # Make batch
+        if len(image.shape) == 3:
+            image = image.unsqueeze(0)
+            B = 1
+        else:
+            B = image.shape[0]
+
+        # Forward pass
+        # image_state = image[:,:3,:,:]
+        # image_next_state = image[:,3:,:,:]
+        # conv_out_state = self.encoder.forward(image_state, detach=detach_encoder).view(B, -1)
+        # # conv_out_state_next = self.encoder.forward(image_next_state, detach=detach_encoder).view(B, -1)
+        # conv_out = torch.cat((conv_out_state, conv_out_state_next), dim=-1)
+        conv_out = self.encoder.forward(image, detach=detach_encoder).view(B, -1)
+        mean = self.mean(conv_out)
+
+        # Learned variance
+        # log_std = self.log_std(conv_out)
+        # log_std = torch.clamp(log_std, self.LOG_STD_MIN, self.LOG_STD_MAX)
+        # std = torch.exp(log_std)
+        # normalRV = Normal(mean, std)
+        # log_prob = normalRV.log_prob(latent)
+
+        # Fixed variance, sigma = 1.0
+        log_prob = -(mean-latent)**2
+
+        return log_prob
