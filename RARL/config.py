@@ -364,3 +364,106 @@ class SACImageConfig():
         self.GAMMA_END = GAMMA_END
         self.GAMMA_PERIOD = GAMMA_PERIOD
         self.GAMMA_DECAY = GAMMA_DECAY
+
+
+class SACImageMaxEntConfig():
+    def __init__(self,
+        # Latent
+        AUG_REWARD_RANGE=0.01,
+        LATENT_DIM=16,
+        LATENT_PRIOR_STD=1.0,
+        FIT_FREQ=20,
+        # Environment
+        FIXED_INIT=True,
+        ENV_NAME='Pendulum-v0', SEED=0,
+        IMG_SZ=48, ACTION_MAG=1, ACTION_DIM=1,
+        # Agent
+        DEVICE='cpu',
+        # Training Setting
+        MAX_UPDATES=2000000, MAX_EP_STEPS=200,
+        MEMORY_CAPACITY=10000,
+        BATCH_SIZE=64,
+        TAU=0.01,
+        ALPHA=0.2, LEARN_ALPHA=True,
+        MAX_MODEL=50,
+        # RL Type
+        MODE='RA',
+        TERMINAL_TYPE='g',
+        # NN Architecture
+        USE_BN=False,
+        USE_SM=True,
+        KERNEL_SIZE=[5,5,3],
+        N_CHANNEL=[16,32,64],
+        MLP_DIM={'critic':[128, 128], 'actor':[64, 64]},
+        ACTIVATION={'critic':'Tanh', 'actor':'ReLU'},
+        # Learning Rate and Discount Factor Scheduler
+        LR_D=1e-3,
+        LR_C=1e-3, LR_C_END=1e-3, LR_C_PERIOD=1, LR_C_DECAY=0.5,
+        LR_A=1e-3, LR_A_END=1e-3, LR_A_PERIOD=1, LR_A_DECAY=0.5,
+        LR_Al=1e-4, LR_Al_END=1e-4, LR_Al_PERIOD=1, LR_Al_DECAY=0.5,
+        GAMMA=0.9, GAMMA_END=0.99999999, GAMMA_PERIOD=200, GAMMA_DECAY=0.5,
+        ):
+
+        # Latent
+        self.LATENT_DIM = LATENT_DIM
+        self.AUG_REWARD_RANGE = AUG_REWARD_RANGE
+        self.FIT_FREQ = FIT_FREQ
+        self.LATENT_PRIOR_STD = LATENT_PRIOR_STD
+    
+        # Environment
+        self.FIXED_INIT = FIXED_INIT
+        self.ENV_NAME = ENV_NAME
+        self.SEED = SEED
+        self.IMG_SZ = IMG_SZ
+        self.ACTION_MAG = ACTION_MAG
+        self.ACTION_DIM = ACTION_DIM
+
+        # Agent
+        self.DEVICE=DEVICE
+
+        # Training Setting
+        self.MAX_UPDATES = MAX_UPDATES
+        self.MAX_EP_STEPS = MAX_EP_STEPS
+        self.MEMORY_CAPACITY = MEMORY_CAPACITY
+        self.BATCH_SIZE = BATCH_SIZE
+        self.TAU = TAU
+        self.ALPHA=ALPHA
+        self.LEARN_ALPHA=LEARN_ALPHA
+        self.MAX_MODEL = MAX_MODEL
+
+        # RL Type
+        self.MODE = MODE
+        self.TERMINAL_TYPE = TERMINAL_TYPE
+
+        # NN Architecture
+        self.USE_BN = USE_BN
+        self.USE_SM = USE_SM
+        self.KERNEL_SIZE = KERNEL_SIZE
+        self.N_CHANNEL = N_CHANNEL
+        self.MLP_DIM = MLP_DIM
+        self.ACTIVATION = ACTIVATION
+
+        # Learning Rate and Discount Factor Scheduler
+        self.LR_D = LR_D
+    
+        self.LR_C = LR_C
+        self.LR_C_END = LR_C_END
+        self.LR_C_PERIOD = LR_C_PERIOD
+        self.LR_C_DECAY = LR_C_DECAY
+
+        self.LR_A = LR_A
+        self.LR_A_END = LR_A_END
+        self.LR_A_PERIOD = LR_A_PERIOD
+        self.LR_A_DECAY = LR_A_DECAY
+
+        self.LR_Al=LR_Al
+        self.LR_Al_END=LR_Al_END
+        self.LR_Al_PERIOD=LR_Al_PERIOD
+        self.LR_Al_DECAY=LR_Al_DECAY
+
+        self.GAMMA = GAMMA
+        self.GAMMA_END = GAMMA_END
+        self.GAMMA_PERIOD = GAMMA_PERIOD
+        self.GAMMA_DECAY = GAMMA_DECAY
+
+
