@@ -413,7 +413,7 @@ class NavigationObsPBEnv(gym.Env):
         #= Sparse `reward` - small penalty for wandering around
         if self.sparse_reward:
             reward = -0.01
-            
+
             # Large reward for reaching target
             dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
             if dist_to_goal_center < self._goal_radius:
@@ -668,7 +668,8 @@ class NavigationObsPBEnv(gym.Env):
 
     #== Trajectories Rollout ==
     def simulate_one_trajectory(self, policy, T=250, endType='TF',
-            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, latent_prior=None):
+            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
+            latent_prior=None):
         """
         simulate_one_trajectory: simulate the trajectory given the state or
             randomly initialized.
@@ -798,7 +799,7 @@ class NavigationObsPBEnv(gym.Env):
                 traj, result, minV, _ = self.simulate_one_trajectory(
                     policy, T=T, endType=endType, theta=theta,
                     sample_inside_obs=sample_inside_obs,
-                    sample_inside_tar=sample_inside_tar, 
+                    sample_inside_tar=sample_inside_tar,
                     latent_prior=latent_prior)
                 trajectories.append(traj)
                 results[idx] = result
@@ -808,7 +809,7 @@ class NavigationObsPBEnv(gym.Env):
             minVs = np.empty(shape=(len(states),), dtype=float)
             for idx, state in enumerate(states):
                 traj, result, minV, _ = self.simulate_one_trajectory(
-                    policy, T=T, state=state, endType=endType, 
+                    policy, T=T, state=state, endType=endType,
                     latent_prior=latent_prior)
                 trajectories.append(traj)
                 results[idx] = result
@@ -820,7 +821,7 @@ class NavigationObsPBEnv(gym.Env):
     #== Plotting ==
     def visualize(  self, q_func, policy, rndTraj=False, num_rnd_traj=10,
                     vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
-                    labels=None, boolPlot=False, plotV=True, normalize_v=False, 
+                    labels=None, boolPlot=False, plotV=True, normalize_v=False,
                     latent_prior=None):
         """
         visualize
@@ -998,7 +999,7 @@ class NavigationObsPBEnv(gym.Env):
             ax (matplotlib.axes.Axes).
             labels (list, optional): x- and y- labels. Defaults to None.
             fsz (int, optional): font size. Defaults to 20.
-        """        
+        """
         axStyle = self.get_axes()
         # ax.plot([0., 0.], [axStyle[0][2], axStyle[0][3]], c='k')
         # ax.plot([axStyle[0][0], axStyle[0][1]], [0., 0.], c='k')

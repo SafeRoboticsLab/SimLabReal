@@ -344,27 +344,28 @@ class SAC_image(ActorCritic):
                 curUpdates=None, checkPeriod=50000,
                 plotFigure=True, storeFigure=False,
                 showBool=False, vmin=-1, vmax=1, numRndTraj=200,
-                storeModel=True, saveBest=False, outFolder='RA', verbose=True):
+                storeModel=True, saveBest=False, outFolder='RA',
+                useVis=False, verbose=True):
 
-        import visdom
-        useVis = 1
-        vis = visdom.Visdom(env='test_sac_6', port=8098)
-        q_loss_window = vis.line(
-            X=array([[0]]),
-            Y=array([[0]]),
-            opts=dict(xlabel='epoch', title='Q Loss'))
-        pi_loss_window = vis.line(
-            X=array([[0]]),
-            Y=array([[0]]),
-            opts=dict(xlabel='epoch', title='Pi Loss'))
-        entropy_window = vis.line(
-            X=array([[0]]),
-            Y=array([[0]]),
-            opts=dict(xlabel='epoch', title='Entropy'))
-        success_window = vis.line(
-            X=array([[0]]),
-            Y=array([[0]]),
-            opts=dict(xlabel='epoch', title='Success'))
+        if useVis:
+            import visdom
+            vis = visdom.Visdom(env='test_sac_6', port=8098)
+            q_loss_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Q Loss'))
+            pi_loss_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Pi Loss'))
+            entropy_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Entropy'))
+            success_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Success'))
 
         # == Build up networks
         self.build_network(verbose=verbose)
