@@ -3,8 +3,8 @@
 #           Allen Z. Ren ( allen.ren@princeton.edu )
 
 # Examples:
-    # RA: python3 sim_car_one_SAC_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -mc 1000 -m safety -n tmp
+    # RA: python3 sim_policy_shielding.py -sf -of scratch -n 999 -mc 50000
+    # python3 sim_policy_shielding.py -sf -lal -ln -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -mc 1000 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -22,8 +22,8 @@ timestr = time.strftime("%Y-%m-%d-%H_%M")
 
 #= AGENT
 from RARL.utils import save_obj
-from RARL.SAC_image import SAC_image
-from RARL.config import SACImageConfig
+from RARL.policyShielding import PolicyShielding
+from RARL.config import NNConfig, TrainingConfig
 
 #= ENV
 from safe_rl.navigation_obs_pb_cont import NavigationObsPBEnvCont
@@ -44,10 +44,6 @@ parser.add_argument("-ts",  "--targetScaling",  help="scaling of ell",
     default=1.,     type=float)
 
 # training scheme
-parser.add_argument("-w",   "--warmup",             help="warmup Q-network",
-    action="store_true")
-parser.add_argument("-wi",  "--warmupIter",         help="warmup iteration",
-    default=10000,  type=int)
 parser.add_argument("-wbr", "--warmupBufferRatio",  help="warmup buffer ratio",
     default=1.0, type=float)
 parser.add_argument("-mu",  "--maxUpdates",         help="maximal #gradient updates",
@@ -67,9 +63,9 @@ parser.add_argument("-a",   "--annealing",                  help="gamma annealin
 parser.add_argument("-lr",  "--learningRate",               help="learning rate",
     default=1e-3,   type=float)
 parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate decay",
-    default=1.0,   type=float)
+    default=0.9,   type=float)
 parser.add_argument("-g",   "--gamma",                      help="contraction coeff.",
-    default=0.999, type=float)
+    default=0.99, type=float)
 parser.add_argument("-al",  "--alpha",                      help="alpha",
     default=0.2, type=float)
 parser.add_argument("-lal", "--learn_alpha",                help="learn alpha",
@@ -92,12 +88,6 @@ parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
     default=[5, 5, 3],      nargs="*", type=int)
 parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
-
-# RL type
-parser.add_argument("-m",   "--mode",           help="mode",
-    default='RA',   type=str)
-parser.add_argument("-tt",  "--terminalType",   help="terminal value",
-    default='g',    type=str)
 
 # file
 parser.add_argument("-vis",  "--visdom",        help="use Visdom",
@@ -125,8 +115,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
+# print(updatePeriod)
 
-fn = args.name + '-' + args.mode + '-' + args.doneType
+fn = args.name + '-shielding-' + args.doneType
 if args.showTime:
     fn = fn + '-' + timestr
 
@@ -137,17 +128,28 @@ os.makedirs(figureFolder, exist_ok=True)
 
 #== Environment ==
 print("\n== Environment Information ==")
-render = False
 img_sz = 48
-env = NavigationObsPBEnvCont(render=render, img_H=img_sz, img_W=img_sz,
-        doneType=args.doneType)
+task = {}
+task['goal_loc'] = np.array([1.8, -0.5])
+task['goal_radius'] = 0.15
+task['obs_loc'] = np.array([.75, 0])
+task['obs_radius'] = 0.45
+env = NavigationObsPBEnvCont(
+    task=task,
+    img_H=img_sz,
+    img_W=img_sz,
+    num_traj_per_visual_initial_states=1,
+    fixed_init=False,
+    sparse_reward=False,
+    useRGB=True,
+    render=False,
+    doneType=args.doneType
+)
 env.seed(args.randomSeed)
 
 stateDim = env.state_dim
 actionDim = env.action_dim
 actionLim = env.action_lim
-print("State Dimension: {:d}, Action Dimension: {:d}".format(
-    stateDim, actionDim))
 env.report()
 env.reset()
 
@@ -233,33 +235,26 @@ else:
 MLP_DIM = {'critic':args.dim_critic, 'actor':args.dim_actor}
 ACTIVATION = {'critic':args.actType, 'actor':args.actType}
 
-CONFIG = SACImageConfig(
+CONFIG = TrainingConfig(
     # Environment
     ENV_NAME=env_name,
     SEED=args.randomSeed,
     IMG_SZ=img_sz,
     ACTION_MAG=float(actionLim),
     ACTION_DIM=actionDim,
+    OBS_CHANNEL=env.num_img_channel,
     # Agent
     DEVICE=device,
     # Training Setting
+    TRAIN_BACKUP=False,
     MAX_UPDATES=maxUpdates,
     MAX_EP_STEPS=args.maxSteps,
     MEMORY_CAPACITY=args.memoryCapacity,
     BATCH_SIZE=args.batchSize,
     ALPHA=args.alpha,
     LEARN_ALPHA=args.learn_alpha,
-    # RL Type
-    MODE=args.mode,
-    TERMINAL_TYPE=args.terminalType,
-    # NN Architecture
-    USE_BN=False,
-    USE_LN=args.layer_norm,
-    USE_SM=True,
-    KERNEL_SIZE=args.kernel_sz,
-    N_CHANNEL=args.n_channel,
-    MLP_DIM=MLP_DIM,
-    ACTIVATION=ACTIVATION,
+    TAU=0.01,
+    MAX_MODEL=50,
     # Learning Rate and Discount Factor Scheduler
     GAMMA=args.gamma,
     GAMMA_PERIOD=GAMMA_PERIOD,
@@ -277,48 +272,39 @@ CONFIG = SACImageConfig(
     LR_Al_PERIOD=LR_Al_PERIOD,
     LR_Al_DECAY=0.9,
 )
+CONFIG_ARCH = NNConfig(
+    USE_BN=False,
+    USE_LN=args.layer_norm,
+    USE_SM=True,
+    KERNEL_SIZE=args.kernel_sz,
+    N_CHANNEL=args.n_channel,
+    MLP_DIM=MLP_DIM,
+    ACTIVATION=ACTIVATION
+)
 
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
-agent = SAC_image(CONFIG)
+agent = PolicyShielding(CONFIG, CONFIG_ARCH, CONFIG_ARCH)
+print('Total parameters in actor: {}'.format(
+    sum(p.numel() for p in agent.actor.parameters() if p.requires_grad) ))
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
-if args.warmup:
-    print("\n== Warmup Q ==")
-    lossArray = agent.initQ(env, 20, outFolder, num_warmup_samples=4096,
-        vmin=-1, vmax=1, plotFigure=args.plotFigure, storeFigure=args.storeFigure)
-
-    if args.plotFigure or args.storeFigure:
-        lossList = lossArray.reshape(-1)
-        fig, ax = plt.subplots(1,1, figsize=(4, 4))
-        tmp = np.arange(500, args.warmupIter)
-        ax.plot(tmp, lossList[tmp], 'b-')
-        ax.set_xlabel('Iteration', fontsize=18)
-        ax.set_ylabel('Loss', fontsize=18)
-        plt.tight_layout()
-
-        if args.storeFigure:
-            figurePath = os.path.join(figureFolder, 'initQ_Loss.png')
-            fig.savefig(figurePath)
-        if args.plotFigure:
-            plt.show()
-            plt.pause(0.001)
-        plt.close()
-
+print("Use pre-trained backup policy:")
+backupPolicyFolder = os.path.join('scratch', 'car-SAC-image', '999-safety-fail', 'model')
+agent.restore(200000, backupPolicyFolder, 'backup')
 
 #== Learning ==
 print("\n== Learning ==")
 trainRecords, trainProgress = agent.learn(
     env, warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
-    warmupQ=False, MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
+    MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
     MAX_EVAL_EP_STEPS=args.maxEvalSteps,
     optimizeFreq=args.optimize_freq,
     numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
-    plotFigure=args.plotFigure, storeFigure=args.storeFigure,
-    useVis=args.visdom)
+    plotFigure=args.plotFigure, storeFigure=args.storeFigure)
     # , visEnvName=args.outFolder.split('/')[-1])
 
 trainDict = {}
@@ -364,13 +350,10 @@ if args.plotFigure or args.storeFigure:
     # successRate = np.amax(trainProgress[:, 0])
     # print('We pick model with success rate-{:.3f}'.format(successRate))
     idx = trainProgress.shape[0]
-    agent.restore(idx*args.checkPeriod, outFolder)
+    performancePolicyFolder = os.path.join(outFolder, 'model', 'performance')
+    agent.restore(idx*args.checkPeriod, performancePolicyFolder, agentType='performance')
     policy = lambda obs, z : agent.actor(obs, z)
-
-    if args.mode == 'safety':
-        rolloutEndType = 'fail'
-    else:
-        rolloutEndType = 'TF'
+    rolloutEndType = 'TF'
 
     nx = args.nx
     ny = nx
@@ -401,10 +384,7 @@ if args.plotFigure or args.storeFigure:
         resultMtx[idx] = result
         it.iternext()
 
-    if args.mode == 'safety':
-        resultVisMtx = (resultMtx == -1)
-    else:
-        resultVisMtx = (resultMtx != 1)
+    resultVisMtx = (resultMtx != 1)
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
     axStyle = env.get_axes()

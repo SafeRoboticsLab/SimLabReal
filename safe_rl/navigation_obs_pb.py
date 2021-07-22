@@ -169,13 +169,13 @@ class NavigationObsPBEnv(gym.Env):
 
 
     def reset(self, random_init=True, state_init=None):
-        if self.fixed_init or random_init:
+        if self.fixed_init:
+            self._state = self.car_init_state
+        elif random_init:
             self._state = self.sample_state(self.sample_inside_obs,
                                             self.sample_inside_tar)
         elif state_init is not None:
             self._state = state_init
-        else:
-            self._state = self.car_init_state
 
         # Start PyBullet session if first time
         # print("----------- reset simulation ---------------")
@@ -517,6 +517,8 @@ class NavigationObsPBEnv(gym.Env):
             self._obs_radius, self._goal_radius))
         print("- v: {:.1f}, w_max: {:.1f}, dt: {:.1f}".format(
             self.v, self.action_lim[0], self.dt))
+        print("Observation shape:")
+        print("({} x {} x {})".format(self.num_img_channel, self.img_W, self.img_H))
 
 
     def get_axes(self):
