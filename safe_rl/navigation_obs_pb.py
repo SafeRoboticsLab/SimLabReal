@@ -88,13 +88,13 @@ class NavigationObsPBEnv(gym.Env):
         self.img_W = img_W
         self.useRGB = useRGB
         if useRGB:
-            num_img_channel = 3 # RGB
+            self.num_img_channel = 3 # RGB
         else:
-            num_img_channel = 1 # D only
+            self.num_img_channel = 1 # D only
         self.observation_space = gym.spaces.Box(
             low=np.float32(0.),
             high=np.float32(1.),
-            shape=(num_img_channel, img_H, img_W))
+            shape=(self.num_img_channel, img_H, img_W))
         self.action_lim = np.float32(np.array([1.])) #! action_space is defined in the child class
 
         # Color

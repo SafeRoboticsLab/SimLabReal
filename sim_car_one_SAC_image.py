@@ -80,7 +80,6 @@ parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per o
     default=100, type=int)
 
 # NN architecture:
-# ? I comment out use_sm and use_bn since the model we have assume using sm but not bn.
 parser.add_argument("-ln",  "--layer_norm",     help="layer normalization",
     action="store_true")
 parser.add_argument("-d_c", "--dim_critic",     help="critic mlp dimension",
