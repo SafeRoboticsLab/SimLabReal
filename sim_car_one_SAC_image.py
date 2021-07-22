@@ -4,7 +4,7 @@
 
 # Examples:
     # RA: python3 sim_car_one_SAC_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -sm -mc 1000 -m safety -n tmp
+    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -mc 1000 -m safety -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -311,6 +311,7 @@ if args.warmup:
 
 
 #== Learning ==
+print("\n== Learning ==")
 trainRecords, trainProgress = agent.learn(
     env, warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
     warmupQ=False, MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
@@ -367,14 +368,7 @@ if args.plotFigure or args.storeFigure:
     # print('We pick model with success rate-{:.3f}'.format(successRate))
     idx = trainProgress.shape[0]
     agent.restore(idx*args.checkPeriod, outFolder)
-    def policy(obs):
-        obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
-        return agent.actor(obsTensor).detach().cpu().detach().numpy()[0]
-    # def q_func(obs):
-    #     obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
-    #     u = agent.actor(obsTensor).detach()
-    #     v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-    #     return v
+    policy = lambda obs, z : agent.actor(obs, z)
 
     if args.mode == 'safety':
         rolloutEndType = 'fail'
@@ -400,7 +394,6 @@ if args.plotFigure or args.storeFigure:
         state = np.array([x, y, 0.])
         obs = env._get_obs(state)
         obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
-        # u = agent.actor(obsTensor).detach().cpu().numpy()[0]
         u = agent.actor(obsTensor).detach()
         v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
         actDistMtx[idx] = u.cpu().numpy()[0]

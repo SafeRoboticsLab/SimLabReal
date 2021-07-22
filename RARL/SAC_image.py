@@ -60,6 +60,7 @@ class SAC_image(ActorCritic):
         self.use_sm = CONFIG.USE_SM
         self.activation_actor = CONFIG.ACTIVATION['actor']
         self.activation_critic = CONFIG.ACTIVATION['critic']
+        self.build_network(verbose=verbose)
 
 
     def build_network(self, verbose=True):
@@ -368,8 +369,8 @@ class SAC_image(ActorCritic):
                 opts=dict(xlabel='epoch', title='Success'))
 
         # == Build up networks
-        self.build_network(verbose=verbose)
-        print("Critic is using cuda: ", next(self.critic.parameters()).is_cuda)
+        # self.build_network(verbose=verbose)
+        # print("Critic is using cuda: ", next(self.critic.parameters()).is_cuda)
 
         # == Warmup Buffer ==
         startInitBuffer = time.time()
