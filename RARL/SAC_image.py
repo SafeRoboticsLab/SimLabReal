@@ -60,7 +60,6 @@ class SAC_image(ActorCritic):
         self.use_sm = CONFIG.USE_SM
         self.activation_actor = CONFIG.ACTIVATION['actor']
         self.activation_critic = CONFIG.ACTIVATION['critic']
-        self.build_network(verbose=verbose)
 
 
     def build_network(self, verbose=True):
@@ -86,9 +85,6 @@ class SAC_image(ActorCritic):
                                             verbose=verbose
         )
         self.criticTarget = copy.deepcopy(self.critic)
-
-        if verbose:
-            print("\nThe actor shares the same encoder with the critic.")
         self.actor = SACPiNetwork(  input_n_channel=3,
                                     mlp_dim=self.mlp_dim_actor,
                                     actionDim=self.actionDim,
@@ -102,6 +98,9 @@ class SAC_image(ActorCritic):
                                     device=self.device,
                                     verbose=verbose
         )
+        if verbose:
+            print("\nThe actor shares the same encoder with the critic.")
+            print('Total parameters in actor: {}'.format(sum(p.numel() for p in self.actor.parameters() if p.requires_grad)))
 
         # Tie weights for conv layers
         self.actor.encoder.copy_conv_weights_from(self.critic.encoder)
@@ -347,23 +346,29 @@ class SAC_image(ActorCritic):
                 showBool=False, vmin=-1, vmax=1, numRndTraj=200,
                 storeModel=True, saveBest=False, outFolder='RA', verbose=True):
 
-        # vis = visdom.Visdom(env=outFolder, port=8098)
-        # q_loss_window = vis.line(
-        #     X=array([[0]]),
-        #     Y=array([[0]]),
-        #     opts=dict(xlabel='epoch', title='Q Loss'))
-        # pi_loss_window = vis.line(
-        #     X=array([[0]]),
-        #     Y=array([[0]]),
-        #     opts=dict(xlabel='epoch', title='Pi Loss'))
-        # entropy_window = vis.line(
-        #     X=array([[0]]),
-        #     Y=array([[0]]),
-        #     opts=dict(xlabel='epoch', title='Entropy'))
-        # success_window = vis.line(
-        #     X=array([[0]]),
-        #     Y=array([[0]]),
-        #     opts=dict(xlabel='epoch', title='Success'))
+        import visdom
+        useVis = 1
+        vis = visdom.Visdom(env='test_sac_6', port=8098)
+        q_loss_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Q Loss'))
+        pi_loss_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Pi Loss'))
+        entropy_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Entropy'))
+        success_window = vis.line(
+            X=array([[0]]),
+            Y=array([[0]]),
+            opts=dict(xlabel='epoch', title='Success'))
+
+        # == Build up networks
+        self.build_network(verbose=verbose)
+        print("Critic is using cuda: ", next(self.critic.parameters()).is_cuda)
 
         # == Warmup Buffer ==
         startInitBuffer = time.time()
@@ -432,9 +437,6 @@ class SAC_image(ActorCritic):
                 if self.cntUpdate != 0 and self.cntUpdate % checkPeriod == 0:
                     self.actor.eval()
                     self.critic.eval()
-                    # if self.actorType == 'SAC':
-                        # policy = lambda x: self.actor.sample(x)[0]
-                    # else:
                     policy = self.actor  # mean only and no std
                     def q_func(obs):
                         obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
@@ -443,8 +445,8 @@ class SAC_image(ActorCritic):
                         return v
 
                     results = env.simulate_trajectories(policy,
-                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj,
-                        endType=endType, sample_inside_obs=False,
+                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj, 
+                        endType=endType, sample_inside_obs=False, 
                         sample_inside_tar=False)[1]
                     if self.mode == 'safety':
                         failure  = np.sum(results==-1)/ results.shape[0]
@@ -456,9 +458,10 @@ class SAC_image(ActorCritic):
                         unfinish = np.sum(results==0) / results.shape[0]
                         trainProgress.append([success, failure, unfinish])
 
-                    # vis.line(X=array([[self.cntUpdate]]),
-                    #             Y=array([[success]]),
-                    #         win=success_window,update='append')
+                    if useVis:
+                        vis.line(X=array([[self.cntUpdate]]),
+                                    Y=array([[success]]),
+                                win=success_window,update='append')
 
                     if verbose:
                         lr = self.actorOptimizer.state_dict()['param_groups'][0]['lr']
@@ -486,16 +489,11 @@ class SAC_image(ActorCritic):
                         # TODO:
                         # fix plot_v error when using critic in RA;
                         # not using it for training performance policy right now
-                        #* KC:
-                        # Modify the environment to take in q_func directly.
-                        # It should work now.
-
                         if showBool:
-                            env.visualize(q_func, policy,
-                                vmin=0, boolPlot=True, plotV=True)
+                            env.visualize(q_func, policy, vmin=0, boolPlot=True)
                         else:
                             env.visualize(q_func, policy,
-                                vmin=vmin, vmax=vmax, cmap='seismic', plotV=True)
+                                vmin=vmin, vmax=vmax, cmap='seismic')
 
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
@@ -514,16 +512,17 @@ class SAC_image(ActorCritic):
                         loss_q, loss_pi, loss_entropy, loss_alpha = self.update(timer)
                         trainingRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha])
 
-                        # if timer == 0:
-                        #     vis.line(X=array([[self.cntUpdate]]),
-                        #                 Y=array([[loss_q]]),
-                        #             win=q_loss_window,update='append')
-                        #     vis.line(X=array([[self.cntUpdate]]),
-                        #                 Y=array([[loss_pi]]),
-                        #             win=pi_loss_window,update='append')
-                        #     vis.line(X=array([[self.cntUpdate]]),
-                        #                 Y=array([[loss_entropy]]),
-                        #             win=entropy_window,update='append')
+                        if timer == 0 and useVis:
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_q]]),
+                                    win=q_loss_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_pi]]),
+                                    win=pi_loss_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_entropy]]),
+                                    win=entropy_window,update='append')
+
                 self.cntUpdate += 1
 
                 # Update gamma, lr etc.

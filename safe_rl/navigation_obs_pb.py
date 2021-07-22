@@ -49,6 +49,9 @@ class NavigationObsPBEnv(gym.Env):
     def __init__(self,  task={},
                         img_H=128,
                         img_W=128,
+                        num_traj_per_visual_initial_states=1,
+                        fixed_init=False,
+                        sparse_reward=False,
                         useRGB=True,
                         render=True,
                         sample_inside_obs=False,
@@ -76,8 +79,9 @@ class NavigationObsPBEnv(gym.Env):
         self.wall_thickness = 0.05
         self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
         self.camera_height = 0.2	# cannot be too low, otherwise bad depth
-        self.sample_inside_obs=sample_inside_obs
-        self.sample_inside_tar=True
+        self.sample_inside_obs = sample_inside_obs
+        self.sample_inside_tar = True
+        self.fixed_init = fixed_init
 
         # Set up observation and action space for Gym
         self.img_H = img_H
@@ -110,10 +114,15 @@ class NavigationObsPBEnv(gym.Env):
 
         # Car initial x/y/theta
         self.car_init_state = np.array([0.1, 0., 0.])
-        self.visual_initial_states = np.array([ [ 0.3,  0.7],
-                                                [ 1.,  -0.5],
-                                                [ 1.5,  0. ],
-                                                [ 0.5,  0. ]])
+        if fixed_init:
+            self.visual_initial_states = np.array([[ 0.1,  0.0]])
+        else:
+            self.visual_initial_states = np.array([ [ 0.3,  0.7],
+                                                    [ 1.,  -0.5],
+                                                    [ 1.5,  0. ],
+                                                    [ 0.5,  0. ]])
+        self.num_traj_per_visual_initial_states = num_traj_per_visual_initial_states
+
         # Car dynamics
         self.state_dim = 3
         self.action_dim = 1
@@ -129,7 +138,7 @@ class NavigationObsPBEnv(gym.Env):
         self._obs_radius = task.get('obs_radius', 0.3)
         self._obs_buffer = 0.2 # no cost if outside buffer
         self._boundary_buffer = 0.02    # not too close to boundary
-        self.obs_reward_scale = 1
+        self.sparse_reward = sparse_reward
 
         # Set up PyBullet parameters
         self._renders = render
@@ -160,7 +169,7 @@ class NavigationObsPBEnv(gym.Env):
 
 
     def reset(self, random_init=True, state_init=None):
-        if random_init:
+        if self.fixed_init or random_init:
             self._state = self.sample_state(self.sample_inside_obs,
                                             self.sample_inside_tar)
         elif state_init is not None:
@@ -401,40 +410,35 @@ class NavigationObsPBEnv(gym.Env):
         fail = g_x >= -0.01 # prevent bad image at the boundary - small value to buffer
         success = l_x <= 0
 
-        #= `reward` signal
-        # reward = 4
-        # dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
-        # # reward_goal = -dist_to_goal_center
-        # reward -= dist_to_goal_center
-        # dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
-        # dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
-        # if dist_to_obs_center < self._obs_radius:
-        #     # reward_obs = -1.1
-        #     reward = 0
-        # elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
-        #     # reward_obs = - (1 - dist_to_obs_boundary/self._obs_buffer)
-        #     reward -= (1-dist_to_obs_boundary/self._obs_buffer)
-        # if boundary_margin > -self._boundary_buffer:
-        #     reward -= (1+boundary_margin/self._boundary_buffer)
+        #= Sparse `reward` - small penalty for wandering around
+        if self.sparse_reward:
+            reward = -0.01
+            
+            # Large reward for reaching target
+            dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
+            if dist_to_goal_center < self._goal_radius:
+                reward = 10
 
-        # Small penalty for wandering around
-        reward = -0.01
-        
-        # Large reward for reaching target
-        dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
-        if dist_to_goal_center < self._goal_radius:
-            # reward += (0.2-dist_to_goal_center)/0.2
-            reward = 1
+            # Large penalty for reaching obstacle or boundary
+            dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
+            if dist_to_obs_center < self._obs_radius:
+                reward -= 5.0
+            if boundary_margin > -self._boundary_buffer:
+                reward -= 5.0
 
-        # Large penalty for reaching obstacle or boundary
-        dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
-        if dist_to_obs_center < self._obs_radius:
-            reward -= 1.0
-        # elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
-        #     reward -= 0.1*(1-dist_to_obs_boundary/self._obs_buffer)
-        if boundary_margin > -self._boundary_buffer:
-            # reward -= 0.1*(1+boundary_margin/self._boundary_buffer)
-            reward -= 1.0
+        else:
+            #= Dense `reward`
+            reward = 4
+            dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
+            reward -= dist_to_goal_center*2
+            dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
+            dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
+            if dist_to_obs_center < self._obs_radius:
+                reward = 0
+            elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
+                reward -= (1-dist_to_obs_boundary/self._obs_buffer)
+            if boundary_margin > -self._boundary_buffer:
+                reward -= (1+boundary_margin/self._boundary_buffer)
 
         #= `done` signal
         if self.doneType == 'end':
@@ -664,7 +668,7 @@ class NavigationObsPBEnv(gym.Env):
 
     #== Trajectories Rollout ==
     def simulate_one_trajectory(self, policy, T=250, endType='TF',
-            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
+            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, latent_prior=None):
         """
         simulate_one_trajectory: simulate the trajectory given the state or
             randomly initialized.
@@ -699,6 +703,11 @@ class NavigationObsPBEnv(gym.Env):
         valueList = []
         gxList = []
         lxList = []
+
+        # Sample latent for trajectory
+        z = None
+        if latent_prior is not None:
+            z = latent_prior.sample().view(1,-1)
 
         for t in range(T):
             #= get obs, g, l
@@ -740,7 +749,7 @@ class NavigationObsPBEnv(gym.Env):
                     break
 
             #= simulate
-            action = policy(obs)
+            action = policy(obs, z)
             w = self.getTurningRate(action)
             _state = self.integrate_forward(_state, w)
 
@@ -752,7 +761,7 @@ class NavigationObsPBEnv(gym.Env):
 
 
     def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, endType='TF',
-        states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True):
+        states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, latent_prior=None):
         """
         simulate_trajectories: simulate the trajectories. If the states are not
             provided, we pick the initial states from the discretized state space.
@@ -789,7 +798,8 @@ class NavigationObsPBEnv(gym.Env):
                 traj, result, minV, _ = self.simulate_one_trajectory(
                     policy, T=T, endType=endType, theta=theta,
                     sample_inside_obs=sample_inside_obs,
-                    sample_inside_tar=sample_inside_tar)
+                    sample_inside_tar=sample_inside_tar, 
+                    latent_prior=latent_prior)
                 trajectories.append(traj)
                 results[idx] = result
                 minVs[idx] = minV
@@ -798,7 +808,8 @@ class NavigationObsPBEnv(gym.Env):
             minVs = np.empty(shape=(len(states),), dtype=float)
             for idx, state in enumerate(states):
                 traj, result, minV, _ = self.simulate_one_trajectory(
-                    policy, T=T, state=state, endType=endType)
+                    policy, T=T, state=state, endType=endType, 
+                    latent_prior=latent_prior)
                 trajectories.append(traj)
                 results[idx] = result
                 minVs[idx] = minV
@@ -809,7 +820,8 @@ class NavigationObsPBEnv(gym.Env):
     #== Plotting ==
     def visualize(  self, q_func, policy, rndTraj=False, num_rnd_traj=10,
                     vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
-                    labels=None, boolPlot=False, plotV=True, normalize_v=False):
+                    labels=None, boolPlot=False, plotV=True, normalize_v=False, 
+                    latent_prior=None):
         """
         visualize
 
@@ -844,19 +856,20 @@ class NavigationObsPBEnv(gym.Env):
 
             #== Plot V ==
             if plotV:
-                self.plot_v_values( q_func, fig, ax, theta=theta,
+                self.plot_v_values(q_func, fig, ax, theta=theta,
                                     boolPlot=boolPlot, cbarPlot=cbarPlot,
                                     vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap,
                                     normalize_v=normalize_v)
 
             #== Plot Trajectories ==
-            thetas = theta*np.ones(shape=(self.visual_initial_states.shape[0], 1))
-            states = np.concatenate((self.visual_initial_states, thetas), axis=1)
+            visual_initial_states = np.tile(self.visual_initial_states, (self.num_traj_per_visual_initial_states, 1))
+            thetas = theta*np.ones(shape=(visual_initial_states.shape[0], 1))
+            states = np.concatenate((visual_initial_states, thetas), axis=1)
             if rndTraj:
-                self.plot_trajectories( policy, ax, num_rnd_traj=num_rnd_traj,
-                    theta=theta, endType='TF')
+                self.plot_trajectories(policy, ax, num_rnd_traj=num_rnd_traj,
+                    theta=theta, endType='TF', latent_prior=latent_prior)
             else:
-                self.plot_trajectories( policy, ax, states=states, endType='TF')
+                self.plot_trajectories(policy, ax, states=states, endType='TF', latent_prior=latent_prior)
 
             #== Formatting ==
             self.plot_formatting(ax, labels=labels)
@@ -867,7 +880,7 @@ class NavigationObsPBEnv(gym.Env):
 
     def plot_v_values(self, q_func, fig, ax, theta=np.pi/2,
             boolPlot=False, cbarPlot=True, vmin=-1, vmax=1, nx=101, ny=101,
-            cmap='seismic', normalize_v=False):
+            cmap='seismic', normalize_v=False, actor=None):
         """
         plot_v_values
 
@@ -914,7 +927,7 @@ class NavigationObsPBEnv(gym.Env):
 
     def plot_trajectories(self, policy, ax, num_rnd_traj=None, T=250, endType='TF',
             states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
-            c='k', lw=2, zorder=2):
+            c='k', lw=2, zorder=2, latent_prior=None):
         """
         plot_trajectories: plot trajectories given the agent's Q-network.
 
@@ -947,7 +960,7 @@ class NavigationObsPBEnv(gym.Env):
         trajectories, results, minVs = self.simulate_trajectories(
             policy, num_rnd_traj=num_rnd_traj, T=T, endType=endType,
             states=states, theta=theta, sample_inside_obs=sample_inside_obs,
-            sample_inside_tar=sample_inside_tar)
+            sample_inside_tar=sample_inside_tar, latent_prior=latent_prior)
 
         if ax == None:
             ax = plt.gca()

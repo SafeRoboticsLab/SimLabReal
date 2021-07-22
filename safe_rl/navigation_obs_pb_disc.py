@@ -1,10 +1,6 @@
 import numpy as np
 import random
-import pybullet as pb
-from pybullet_utils import bullet_client as bc
 import gym
-from matplotlib.ticker import LinearLocator
-
 
 import os
 os.sys.path.append(os.path.join(os.getcwd(), '.'))
@@ -15,6 +11,9 @@ class NavigationObsPBEnvDisc(NavigationObsPBEnv):
     def __init__(self, task={},
                         img_H=128,
                         img_W=128,
+                        fixed_init=False,
+                        sparse_reward=False,
+                        num_traj_per_visual_initial_states=1,
                         useRGB=True,
                         render=True,
                         doneType='fail'):
@@ -30,6 +29,9 @@ class NavigationObsPBEnvDisc(NavigationObsPBEnv):
         super(NavigationObsPBEnvDisc, self).__init__(   task=task,
                                                         img_H=img_H,
                                                         img_W=img_W,
+                                                        num_traj_per_visual_initial_states=num_traj_per_visual_initial_states,
+                                                        fixed_init=fixed_init,
+                                                        sparse_reward=sparse_reward,
                                                         useRGB=useRGB,
                                                         render=render,
                                                         doneType=doneType)
