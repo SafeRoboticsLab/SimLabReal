@@ -58,8 +58,6 @@ parser.add_argument("-bs",  "--batchSize",          help="batch size",
     default=128,  type=int)
 
 # hyper-parameters
-parser.add_argument("-a",   "--annealing",                  help="gamma annealing",
-    action="store_true")
 parser.add_argument("-lr",  "--learningRate",               help="learning rate",
     default=1e-3,   type=float)
 parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate decay",
@@ -126,6 +124,7 @@ print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
 
+
 #== Environment ==
 print("\n== Environment Information ==")
 img_sz = 48
@@ -153,65 +152,13 @@ actionLim = env.action_lim
 env.report()
 env.reset()
 
-#== Get and Plot max{l_x, g_x} ==
+#= Plot Env
 if args.plotFigure or args.storeFigure:
-    nx = 101
-    ny = nx
-    vmin = -1
-    vmax = 1
+    fig, ax = plt.subplots(1, 1, figsize=(3, 3), sharex=True, sharey=True)
+    env.plot_target_failure_set(ax)
+    env.plot_formatting(ax, labels=None, fsz=16)
+    plt.show()
 
-    v = np.zeros((nx, ny))
-    l_x = np.zeros((nx, ny))
-    g_x = np.zeros((nx, ny))
-    xs = np.linspace(env.bounds[0,0], env.bounds[0,1], nx)
-    ys =np.linspace(env.bounds[1,0], env.bounds[1,1], ny)
-
-    it = np.nditer(v, flags=['multi_index'])
-
-    while not it.finished:
-        idx = it.multi_index
-        x = xs[idx[0]]
-        y = ys[idx[1]]
-
-        l_x[idx] = env.target_margin(np.array([x, y]))
-        g_x[idx] = env.safety_margin(np.array([x, y]))
-
-        v[idx] = np.maximum(l_x[idx], g_x[idx])
-        it.iternext()
-
-    axStyle = env.get_axes()
-
-    fig, axes = plt.subplots(1,3, figsize=(12,6))
-
-    ax = axes[0]
-    im = ax.imshow(l_x.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
-    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
-        ticks=[vmin, 0, vmax])
-    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=24)
-    ax.set_title(r'$\ell(x)$', fontsize=18)
-
-    ax = axes[1]
-    im = ax.imshow(g_x.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
-    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
-        ticks=[vmin, 0, vmax])
-    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=24)
-    ax.set_title(r'$g(x)$', fontsize=18)
-
-    ax = axes[2]
-    im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
-    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
-        ticks=[vmin, 0, vmax])
-    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=24)
-    ax.set_title(r'$v(x)$', fontsize=18)
-
-    for ax in axes:
-        env.plot_target_failure_set(ax=ax)
-        env.plot_formatting(ax=ax)
-
-    fig.tight_layout()
     if args.storeFigure:
         figurePath = os.path.join(figureFolder, 'env.png')
         fig.savefig(figurePath)
@@ -223,17 +170,12 @@ if args.plotFigure or args.storeFigure:
 
 #== AGENT ==
 print("\n== Agent Information ==")
-if args.annealing:
-    GAMMA_END = 0.9999
-    GAMMA_PERIOD = updatePeriod
-    LR_Al_PERIOD = int(updatePeriod/10)
-else:
-    GAMMA_END = args.gamma
-    GAMMA_PERIOD = maxUpdates
-    LR_Al_PERIOD = updatePeriod
+GAMMA_END = args.gamma
+GAMMA_PERIOD = maxUpdates
+LR_Al_PERIOD = updatePeriod
 
-MLP_DIM = {'critic':args.dim_critic, 'actor':args.dim_actor}
-ACTIVATION = {'critic':args.actType, 'actor':args.actType}
+MLP_DIM    = {'critic': args.dim_critic, 'actor': args.dim_actor}
+ACTIVATION = {'critic': args.actType,    'actor': args.actType}
 
 CONFIG = TrainingConfig(
     # Environment
@@ -272,6 +214,7 @@ CONFIG = TrainingConfig(
     LR_Al_PERIOD=LR_Al_PERIOD,
     LR_Al_DECAY=0.9,
 )
+
 CONFIG_ARCH = NNConfig(
     USE_BN=False,
     USE_LN=args.layer_norm,
@@ -281,9 +224,9 @@ CONFIG_ARCH = NNConfig(
     MLP_DIM=MLP_DIM,
     ACTIVATION=ACTIVATION
 )
-
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
+
 agent = PolicyShielding(CONFIG, CONFIG_ARCH, CONFIG_ARCH)
 print('Total parameters in actor: {}'.format(
     sum(p.numel() for p in agent.actor.parameters() if p.requires_grad) ))

@@ -92,9 +92,9 @@ class PolicyShielding(object):
         self.LR_Al_END = CONFIG.LR_Al_END
         if self.LEARN_ALPHA:
             print("SAC with learnable alpha and target entropy = {:.1e}".format(
-                self.target_entropy))
+                self.target_entropy), end='\n\n')
         else:
-            print("SAC with fixed alpha = {:.1e}".format(self.init_alpha))
+            print("SAC with fixed alpha = {:.1e}".format(self.init_alpha), end='\n\n')
 
         #= critic/actor-related hyper-parameters
         self.build_perforance_policy(CONFIG_PERFORMANCE, verbose=verbose)
@@ -102,7 +102,7 @@ class PolicyShielding(object):
 
 
     def build_perforance_policy(self, CONFIG, verbose=True):
-        self.critic = SACTwinnedQNetwork(   
+        self.critic = SACTwinnedQNetwork(
             input_n_channel=self.obsChannel,
             img_sz=self.img_sz,
             actionDim=self.actionDim,
@@ -119,7 +119,7 @@ class PolicyShielding(object):
 
         if verbose:
             print("\nThe actor shares the same encoder with the critic.")
-        self.actor = SACPiNetwork(  
+        self.actor = SACPiNetwork(
             input_n_channel=self.obsChannel,
             img_sz=self.img_sz,
             actionDim=self.actionDim,
@@ -190,7 +190,7 @@ class PolicyShielding(object):
             step_size=self.LR_C_PERIOD, gamma=self.LR_C_DECAY)
         self.actorScheduler = lr_scheduler.StepLR(self.actorOptimizer,
             step_size=self.LR_A_PERIOD, gamma=self.LR_A_DECAY)
-        
+
         if self.LEARN_ALPHA:
             self.log_alpha.requires_grad = True
             self.log_alphaOptimizer = Adam([self.log_alpha], lr=self.LR_Al)
@@ -447,13 +447,10 @@ class PolicyShielding(object):
             # Rollout
             for _ in range(MAX_EP_STEPS):
                 # Select action
-                # if warmupBuffer or self.cntUpdate > max(warmupIter, self.start_updates):
                 with torch.no_grad():
                     a, _ = self.actor.sample(
                         torch.from_numpy(s).float().to(self.device))
                     a = a.view(-1).cpu().numpy()
-                # else:
-                    # a = env.action_space.sample()
 
                 # Interact with env
                 s_, r, done, info = env.step(a)
@@ -476,8 +473,8 @@ class PolicyShielding(object):
                         return v
 
                     results = env.simulate_trajectories(policy,
-                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj, 
-                        endType=endType, sample_inside_obs=False, 
+                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj,
+                        endType=endType, sample_inside_obs=False,
                         sample_inside_tar=False)[1]
                     if self.mode == 'safety':
                         failure  = np.sum(results==-1)/ results.shape[0]
@@ -587,14 +584,19 @@ class PolicyShielding(object):
 
 
     def restore(self, step, logs_path, agentType):
-        # logs_path_critic = os.path.join(
-        #     logs_path, 'model', agentType, 'critic', 'critic-{}.pth'.format(step))
-        # logs_path_actor  = os.path.join(
-        #     logs_path, 'model', agentType, 'actor', 'actor-{}.pth'.format(step))
+        """
+        restore
+
+        Args:
+            step (int): #updates trained.
+            logs_path (str): the path of the directory, under this folder there should
+                be critic/ and agent/ folders.
+            agentType (str): performance policy or backup policy.
+        """
         logs_path_critic = os.path.join(
             logs_path, 'critic', 'critic-{}.pth'.format(step))
         logs_path_actor  = os.path.join(
-            logs_path, 'actor', 'actor-{}.pth'.format(step))
+            logs_path, 'actor',  'actor-{}.pth'.format(step))
         if agentType == 'backup':
             self.critic_backup.load_state_dict(
                 torch.load(logs_path_critic, map_location=self.device))

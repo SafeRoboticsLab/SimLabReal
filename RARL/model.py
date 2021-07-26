@@ -179,7 +179,7 @@ class SACTwinnedQNetwork(torch.nn.Module):
         self.Q2 = copy.deepcopy(self.Q1)
         if verbose:
             print("The MLP for critic has the architecture as below:")
-            print(self.Q1)
+            print(self.Q1.moduleList)
 
 
     def forward(self, image, actions, latent=None, detach_encoder=False):
@@ -287,9 +287,9 @@ class GaussianPolicy(nn.Module):
             verbose=False).to(device)
         if verbose:
             print("The MLP for MEAN has the architecture as below:")
-            print(self.mean)
+            print(self.mean.moduleList)
             print("The MLP for LOG_STD has the architecture as below:")
-            print(self.log_std)
+            print(self.log_std.moduleList)
 
         self.a_max = actionMag
         self.a_min = -actionMag
