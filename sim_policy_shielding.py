@@ -28,50 +28,50 @@ from RARL.config import NNConfig, TrainingConfig
 #= ENV
 from safe_rl.navigation_obs_pb_cont import NavigationObsPBEnvCont
 
-#== ARGS ==
+# region: == ARGS ==
 parser = argparse.ArgumentParser()
 
 # environment parameters
-parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
-    default='fail',  type=str)
+# parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
+#     default='fail', type=str)
 parser.add_argument("-rnd", "--randomSeed",     help="random seed",
     default=0,      type=int)
 parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
-    default=100,    type=int)
+    default=500,    type=int)
 parser.add_argument("-mes", "--maxEvalSteps",   help="maximum eval steps",
-    default=100,    type=int)
-parser.add_argument("-ts",  "--targetScaling",  help="scaling of ell",
-    default=1.,     type=float)
+    default=250,    type=int)
 
 # training scheme
 parser.add_argument("-wbr", "--warmupBufferRatio",  help="warmup buffer ratio",
-    default=1.0, type=float)
+    default=1.0,    type=float)
 parser.add_argument("-mu",  "--maxUpdates",         help="maximal #gradient updates",
-    default=800000, type=int)
+    default=200000, type=int)
 parser.add_argument("-ut",  "--updateTimes",        help="hyper-param. update times",
     default=20,     type=int)
 parser.add_argument("-mc",  "--memoryCapacity",     help="memoryCapacity",
     default=50000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",        help="check period",
-    default=1000,  type=int)
+    default=1000,   type=int)
 parser.add_argument("-bs",  "--batchSize",          help="batch size",
-    default=128,  type=int)
+    default=128,    type=int)
+parser.add_argument("-sht", "--shieldType",         help="when to raise shield flag",
+    default='none', type=str,   choices=['none', 'simulator', 'safetyValue'])
 
 # hyper-parameters
 parser.add_argument("-lr",  "--learningRate",               help="learning rate",
     default=1e-3,   type=float)
 parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate decay",
-    default=0.9,   type=float)
+    default=0.9,    type=float)
 parser.add_argument("-g",   "--gamma",                      help="contraction coeff.",
-    default=0.99, type=float)
+    default=0.99,   type=float)
 parser.add_argument("-al",  "--alpha",                      help="alpha",
-    default=0.2, type=float)
+    default=0.2,    type=float)
+parser.add_argument("-ues", "--optimize_freq",              help="optimization freq.",
+    default=100,    type=int)
+parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
+    default=100,    type=int)
 parser.add_argument("-lal", "--learn_alpha",                help="learn alpha",
     action="store_true")
-parser.add_argument("-ues", "--optimize_freq",              help="optimization freq.",
-    default=100, type=int)
-parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
-    default=100, type=int)
 
 # NN architecture:
 parser.add_argument("-ln",  "--layer_norm",     help="layer normalization",
@@ -88,8 +88,6 @@ parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
 
 # file
-parser.add_argument("-vis",  "--visdom",        help="use Visdom",
-    action="store_true")
 parser.add_argument("-nx",  "--nx",             help="check period",
     default=101, type=int)
 parser.add_argument("-st",  "--showTime",       help="show timestr",
@@ -98,6 +96,8 @@ parser.add_argument("-n",   "--name",           help="extra name",
     default='', type=str)
 parser.add_argument("-of",  "--outFolder",      help="output file",
     default='/scratch/gpfs/kaichieh/',  type=str)
+# parser.add_argument("-bf",  "--backupFolder",   help="backup critic/actor",
+#     default='/scratch/gpfs/kaichieh/',  type=str)
 parser.add_argument("-pf",  "--plotFigure",     help="plot figures",
     action="store_true")
 parser.add_argument("-sf",  "--storeFigure",    help="store figures",
@@ -105,9 +105,10 @@ parser.add_argument("-sf",  "--storeFigure",    help="store figures",
 
 args = parser.parse_args()
 print(args)
+# endregion
 
 
-#== CONFIGURATION ==
+# region: == CONFIGURATION ==
 env_name = 'navigation_pac_ra_cont-v0'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
@@ -115,7 +116,7 @@ updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
 # print(updatePeriod)
 
-fn = args.name + '-shielding-' + args.doneType
+fn = args.name + '-shield_by_' + args.shieldType
 if args.showTime:
     fn = fn + '-' + timestr
 
@@ -123,16 +124,17 @@ outFolder = os.path.join(args.outFolder, 'car-SAC-image', fn)
 print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
+# endregion
 
 
-#== Environment ==
+# region: == Environment ==
 print("\n== Environment Information ==")
 img_sz = 48
 task = {}
 task['goal_loc'] = np.array([1.8, -0.5])
 task['goal_radius'] = 0.15
-task['obs_loc'] = np.array([.75, 0])
-task['obs_radius'] = 0.45
+task['obs_loc'] = np.array([.8, 0])
+task['obs_radius'] = 0.4
 env = NavigationObsPBEnvCont(
     task=task,
     img_H=img_sz,
@@ -142,7 +144,7 @@ env = NavigationObsPBEnvCont(
     sparse_reward=False,
     useRGB=True,
     render=False,
-    doneType=args.doneType
+    doneType='fail'
 )
 env.seed(args.randomSeed)
 
@@ -166,9 +168,10 @@ if args.plotFigure or args.storeFigure:
         plt.show()
         plt.pause(0.001)
     plt.close()
+# endregion
 
 
-#== AGENT ==
+# region: == AGENT ==
 print("\n== Agent Information ==")
 GAMMA_END = args.gamma
 GAMMA_PERIOD = maxUpdates
@@ -234,25 +237,42 @@ print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
 print("Use pre-trained backup policy:")
-backupPolicyFolder = os.path.join('scratch', 'car-SAC-image', '999-safety-fail', 'model')
-agent.restore(200000, backupPolicyFolder, 'backup')
+backupFolder = os.path.join(
+    args.outFolder, 'car-SAC-image', '999-safety-fail', 'model')
+agent.restore(200000, backupFolder, 'backup')
+# endregion
 
-#== Learning ==
+
+# region: == Learning ==
 print("\n== Learning ==")
-trainRecords, trainProgress = agent.learn(
-    env, warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
+shieldDict = {}
+shieldDict['Type'] = args.shieldType
+if shieldDict['Type'] == 'simulator':
+    shieldDict['T_rollout'] = 100
+if shieldDict['Type'] == 'safetyValue':
+    shieldDict['Threshold'] = -0.02
+
+trainRecords, trainProgress, violationRecord = agent.learn(
+    env, shieldDict,
+    warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
     MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
+    # MAX_UPDATES=10000, MAX_EP_STEPS=1000,
     MAX_EVAL_EP_STEPS=args.maxEvalSteps,
     optimizeFreq=args.optimize_freq,
     numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
-    # , visEnvName=args.outFolder.split('/')[-1])
+print('The number of safety violations: {:d}/{:d}'.format(
+    violationRecord[-1], len(violationRecord)+1))
+# endregion
 
+
+# region: == Training Result Dictionary ==
 trainDict = {}
 trainDict['trainRecords'] = trainRecords
 trainDict['trainProgress'] = trainProgress
+trainDict['violationRecord'] = violationRecord
 filePath = os.path.join(outFolder, 'train')
 
 if args.plotFigure or args.storeFigure:
@@ -373,3 +393,4 @@ if args.plotFigure or args.storeFigure:
     trainDict['actDistMtx'] = actDistMtx
 
 save_obj(trainDict, filePath)
+# endregion

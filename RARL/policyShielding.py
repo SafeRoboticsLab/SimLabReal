@@ -400,13 +400,27 @@ class PolicyShielding(object):
         return loss_q, loss_pi, loss_entropy, loss_alpha
 
 
-    def learn(  self, env, MAX_UPDATES=2000000, MAX_EP_STEPS=50,
-                MAX_EVAL_EP_STEPS=100,
+    def performanceStateValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.actor(obsTensor).detach()
+        v = self.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
+    def backupStateValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.actor_backup(obsTensor).detach()
+        v = self.critic_backup(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
+    def learn(  self, env, shieldDict,
+                MAX_UPDATES=200000, MAX_EP_STEPS=100, MAX_EVAL_EP_STEPS=100,
                 warmupBuffer=True, warmupBufferRatio=1.0,
-                optimizeFreq=100, numUpdatePerOptimize=128,
-                curUpdates=None, checkPeriod=50000,
+                optimizeFreq=100, numUpdatePerOptimize=100,
+                curUpdates=None, checkPeriod=10000,
                 plotFigure=True, storeFigure=False,
-                showBool=False, vmin=-1, vmax=1, numRndTraj=200,
+                showBool=False, vmin=-1, vmax=1, numRndTraj=100,
                 storeModel=True, saveBest=False, outFolder='RA', verbose=True):
 
         # == Warmup Buffer ==
@@ -417,10 +431,12 @@ class PolicyShielding(object):
 
         # == Main Training ==
         startLearning = time.time()
-        trainingRecords = []
+        trainRecords = []
         trainProgress = []
+        violationRecord = []
         checkPointSucc = 0.
         ep = 0
+        safetyViolationCnt = 0
 
         if storeModel:
             modelFolder = os.path.join(outFolder, 'model')
@@ -443,14 +459,38 @@ class PolicyShielding(object):
             s = env.reset()
             epCost = np.inf
             ep += 1
+            print('\n[{}]: '.format(ep))
+            print(env._state)
 
             # Rollout
-            for _ in range(MAX_EP_STEPS):
+            for t in range(MAX_EP_STEPS):
                 # Select action
                 with torch.no_grad():
                     a, _ = self.actor.sample(
                         torch.from_numpy(s).float().to(self.device))
                     a = a.view(-1).cpu().numpy()
+
+                # Check Safety
+                # ? Check if correct
+                shieldType = shieldDict['Type']
+                if shieldType == 'none':
+                    pass
+                else:
+                    w = env.getTurningRate(a)
+                    _state = env.integrate_forward(env._state, w)
+                    obs = env._get_obs(_state)
+
+                    if shieldType == 'safetyValue':
+                        safetyValue = self.backupStateValue(obs)
+                        shieldFlag = (safetyValue > shieldDict['Threshold'])
+                    elif shieldType == 'simulator':
+                        T_ro = shieldDict['T_rollout']
+                        _, result, _, _ = env.simulate_one_trajectory(self.actor_backup,
+                            T=T_ro, endType='fail', state=_state, latent_prior=None)
+                        shieldFlag = (result == -1)
+
+                    if shieldFlag:
+                        a = self.actor_backup(s)
 
                 # Interact with env
                 s_, r, done, info = env.step(a)
@@ -466,11 +506,6 @@ class PolicyShielding(object):
                     self.actor.eval()
                     self.critic.eval()
                     policy = self.actor  # mean only and no std
-                    def q_func(obs):
-                        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
-                        u = self.actor(obsTensor).detach()
-                        v = self.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-                        return v
 
                     results = env.simulate_trajectories(policy,
                         T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj,
@@ -509,13 +544,11 @@ class PolicyShielding(object):
                             self.save(self.cntUpdate, modelFolder, agentType='performance')
 
                     if plotFigure or storeFigure:
-                        # TODO:
-                        # fix plot_v error when using critic in RA;
-                        # not using it for training performance policy right now
                         if showBool:
-                            env.visualize(q_func, policy, vmin=0, boolPlot=True)
+                            env.visualize(self.performanceStateValue, policy,
+                                vmin=0, boolPlot=True)
                         else:
-                            env.visualize(q_func, policy,
+                            env.visualize(self.performanceStateValue, policy,
                                 vmin=vmin, vmax=vmax, cmap='seismic')
 
                         if storeFigure:
@@ -533,7 +566,7 @@ class PolicyShielding(object):
                 if self.cntUpdate % optimizeFreq == 0:
                     for timer in range(numUpdatePerOptimize):
                         loss_q, loss_pi, loss_entropy, loss_alpha = self.update(timer)
-                        trainingRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha])
+                        trainRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha])
 
                 self.cntUpdate += 1
 
@@ -544,7 +577,13 @@ class PolicyShielding(object):
 
                 # Terminate early
                 if done:
+                    # g_x = env.safety_margin(env._state, return_boundary=False)
+                    # if g_x > 0:
+                    safetyViolationCnt += 1
+                    violationRecord.append(safetyViolationCnt)
                     break
+                if t == (MAX_EP_STEPS-1):
+                    violationRecord.append(safetyViolationCnt)
 
         endLearning = time.time()
         timeInitBuffer = endInitBuffer - startInitBuffer
@@ -553,9 +592,9 @@ class PolicyShielding(object):
         print('\nInitBuffer: {:.1f}, Learning: {:.1f}'.format(
             timeInitBuffer, timeLearning))
 
-        trainingRecords = np.array(trainingRecords)
+        trainRecords = np.array(trainRecords)
         trainProgress = np.array(trainProgress)
-        return trainingRecords, trainProgress
+        return trainRecords, trainProgress, violationRecord
     # endregion
 
 
@@ -605,9 +644,9 @@ class PolicyShielding(object):
                 self.criticTarget_backup.load_state_dict(
                     torch.load(logs_path_critic, map_location=self.device))
                 self.criticTarget_backup.to(self.device)
-            self.actor.load_state_dict(
+            self.actor_backup.load_state_dict(
                 torch.load(logs_path_actor, map_location=self.device))
-            self.actor.to(self.device)
+            self.actor_backup.to(self.device)
         elif agentType == 'performance':
             self.critic.load_state_dict(
                 torch.load(logs_path_critic, map_location=self.device))

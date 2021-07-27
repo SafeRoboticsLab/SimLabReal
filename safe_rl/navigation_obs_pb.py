@@ -407,7 +407,12 @@ class NavigationObsPBEnv(gym.Env):
         #= `l_x` and `g_x` signal
         l_x = self.target_margin(self._state)
         g_x, boundary_margin = self.safety_margin(self._state, return_boundary=True)
-        fail = g_x >= -0.01 # prevent bad image at the boundary - small value to buffer
+        #! Even though we have a buffer here, we still have observations that do not
+        #! have the obstacle in the FoV. If possible, I want the done flag to be raised
+        #! exactly when the agent hits the obstacle, so the shielding criteria and the
+        #!  backup policy are more easily evaluated.
+        # fail = g_x >= -0.01 # prevent bad image at the boundary - small value to buffer
+        fail = (g_x > 0)
         success = l_x <= 0
 
         #= Sparse `reward` - small penalty for wandering around
