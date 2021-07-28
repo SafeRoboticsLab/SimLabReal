@@ -55,7 +55,7 @@ parser.add_argument("-cp",  "--checkPeriod",        help="check period",
 parser.add_argument("-bs",  "--batchSize",          help="batch size",
     default=128,    type=int)
 parser.add_argument("-sht", "--shieldType",         help="when to raise shield flag",
-    default='none', type=str,   choices=['none', 'simulator', 'safetyValue'])
+    default='none', type=str,   choices=['none', 'simulator', 'value'])
 
 # hyper-parameters
 parser.add_argument("-lr",  "--learningRate",               help="learning rate",
@@ -159,7 +159,6 @@ if args.plotFigure or args.storeFigure:
     fig, ax = plt.subplots(1, 1, figsize=(3, 3), sharex=True, sharey=True)
     env.plot_target_failure_set(ax)
     env.plot_formatting(ax, labels=None, fsz=16)
-    plt.show()
 
     if args.storeFigure:
         figurePath = os.path.join(figureFolder, 'env.png')
@@ -249,7 +248,7 @@ shieldDict = {}
 shieldDict['Type'] = args.shieldType
 if shieldDict['Type'] == 'simulator':
     shieldDict['T_rollout'] = 100
-if shieldDict['Type'] == 'safetyValue':
+if shieldDict['Type'] == 'value':
     shieldDict['Threshold'] = -0.02
 
 trainRecords, trainProgress, violationRecord = agent.learn(

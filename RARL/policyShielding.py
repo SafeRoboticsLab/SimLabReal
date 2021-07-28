@@ -203,7 +203,7 @@ class PolicyShielding(object):
 
 
     def reset_alpha(self):
-        print("Reset alpha")
+        # print("Reset alpha")
         self.log_alpha = torch.tensor(np.log(self.init_alpha)).to(self.device)
         self.log_alpha.requires_grad = True
         self.log_alphaOptimizer = Adam([self.log_alpha], lr=self.LR_Al)
@@ -480,7 +480,7 @@ class PolicyShielding(object):
                     _state = env.integrate_forward(env._state, w)
                     obs = env._get_obs(_state)
 
-                    if shieldType == 'safetyValue':
+                    if shieldType == 'value':
                         safetyValue = self.backupStateValue(obs)
                         shieldFlag = (safetyValue > shieldDict['Threshold'])
                     elif shieldType == 'simulator':
@@ -549,7 +549,7 @@ class PolicyShielding(object):
                                 vmin=0, boolPlot=True)
                         else:
                             env.visualize(self.performanceStateValue, policy,
-                                vmin=vmin, vmax=vmax, cmap='seismic')
+                                vmin=vmin, vmax=vmax, cmap='seismic', normalize_v=True)
 
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
