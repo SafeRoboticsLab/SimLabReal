@@ -92,9 +92,9 @@ class PolicyShielding(object):
         self.LR_Al_END = CONFIG.LR_Al_END
         if self.LEARN_ALPHA:
             print("SAC with learnable alpha and target entropy = {:.1e}".format(
-                self.target_entropy), end='\n\n')
+                self.target_entropy))
         else:
-            print("SAC with fixed alpha = {:.1e}".format(self.init_alpha), end='\n\n')
+            print("SAC with fixed alpha = {:.1e}".format(self.init_alpha))
 
         #= critic/actor-related hyper-parameters
         self.build_perforance_policy(CONFIG_PERFORMANCE, verbose=verbose)

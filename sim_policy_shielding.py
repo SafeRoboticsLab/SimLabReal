@@ -40,6 +40,8 @@ parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
     default=500,    type=int)
 parser.add_argument("-mes", "--maxEvalSteps",   help="maximum eval steps",
     default=250,    type=int)
+parser.add_argument("-fi",  "--fixed_init",     help="layer normalization",
+    action="store_true")
 
 # training scheme
 parser.add_argument("-wbr", "--warmupBufferRatio",  help="warmup buffer ratio",
@@ -114,9 +116,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
-# print(updatePeriod)
 
 fn = args.name + '-shield_by_' + args.shieldType
+if args.fixed_init:
+    fn = fn + '-fix'
 if args.showTime:
     fn = fn + '-' + timestr
 
@@ -140,7 +143,7 @@ env = NavigationObsPBEnvCont(
     img_H=img_sz,
     img_W=img_sz,
     num_traj_per_visual_initial_states=1,
-    fixed_init=False,
+    fixed_init=args.fixed_init,
     sparse_reward=False,
     useRGB=True,
     render=False,
