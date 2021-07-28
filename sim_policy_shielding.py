@@ -51,7 +51,7 @@ parser.add_argument("-ut",  "--updateTimes",        help="hyper-param. update ti
 parser.add_argument("-mc",  "--memoryCapacity",     help="memoryCapacity",
     default=50000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",        help="check period",
-    default=1000,   type=int)
+    default=10000,  type=int)
 parser.add_argument("-bs",  "--batchSize",          help="batch size",
     default=128,    type=int)
 parser.add_argument("-sht", "--shieldType",         help="when to raise shield flag",
