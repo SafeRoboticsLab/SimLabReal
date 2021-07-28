@@ -480,7 +480,8 @@ class TrainingConfig():
         ACTION_DIM=1,
         OBS_CHANNEL=3,
         # Agent
-        # MODE='performance',
+        MODE='performance',
+        TERMINAL_TYPE='max',
         DEVICE='cpu',
         # Training Setting
         TRAIN_BACKUP=False,
@@ -508,6 +509,8 @@ class TrainingConfig():
         self.OBS_CHANNEL = OBS_CHANNEL
 
         # Agent
+        self.MODE = MODE
+        self.TERMINAL_TYPE = TERMINAL_TYPE
         self.DEVICE=DEVICE
 
         # Training Setting

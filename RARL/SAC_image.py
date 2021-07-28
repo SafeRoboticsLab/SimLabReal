@@ -20,7 +20,7 @@ from .ActorCritic import ActorCritic, Transition
 import copy
 
 class SAC_image(ActorCritic):
-    def __init__(self, CONFIG, verbose=True):
+    def __init__(self, CONFIG, CONFIG_ARCH, verbose=True):
         """
         __init__: initialization.
 
@@ -29,6 +29,12 @@ class SAC_image(ActorCritic):
             verbose (bool, optional): print info or not. Defaults to True.
         """
         super(SAC_image, self).__init__('SAC', CONFIG)
+
+        #== ENV PARAM ==
+        self.obsChannel = CONFIG.OBS_CHANNEL
+        self.actionMag = CONFIG.ACTION_MAG
+        self.actionDim = CONFIG.ACTION_DIM
+        self.img_sz = CONFIG.IMG_SZ
 
         #= alpha-related hyper-parameters
         self.init_alpha = CONFIG.ALPHA
@@ -51,63 +57,56 @@ class SAC_image(ActorCritic):
         self.terminalType = CONFIG.TERMINAL_TYPE
 
         #= critic/actor-related hyper-parameters
-        self.mlp_dim_actor = CONFIG.MLP_DIM['actor']
-        self.mlp_dim_critic = CONFIG.MLP_DIM['critic']
-        self.img_sz = CONFIG.IMG_SZ
-        self.kernel_sz = CONFIG.KERNEL_SIZE
-        self.n_channel = CONFIG.N_CHANNEL
-        self.use_ln = CONFIG.USE_LN
-        self.use_sm = CONFIG.USE_SM
-        self.activation_actor = CONFIG.ACTIVATION['actor']
-        self.activation_critic = CONFIG.ACTIVATION['critic']
-        self.build_network(verbose=verbose)
+        # self.mlp_dim_actor = CONFIG.MLP_DIM['actor']
+        # self.mlp_dim_critic = CONFIG.MLP_DIM['critic']
+        # self.img_sz = CONFIG.IMG_SZ
+        # self.kernel_sz = CONFIG.KERNEL_SIZE
+        # self.n_channel = CONFIG.N_CHANNEL
+        # self.use_ln = CONFIG.USE_LN
+        # self.use_sm = CONFIG.USE_SM
+        # self.activation_actor = CONFIG.ACTIVATION['actor']
+        # self.activation_critic = CONFIG.ACTIVATION['critic']
+        self.build_network(CONFIG_ARCH, verbose=verbose)
 
 
-    def build_network(self, verbose=True):
-        """
-        Overriding ActorCritic
-        """
-        """
-        build_network [summary]
-        Args:
-        """
-
-        # Set up NN
-        self.critic = SACTwinnedQNetwork(   input_n_channel=3,
-                                            mlp_dim=self.mlp_dim_critic,
-                                            actionDim=self.actionDim,
-                                            actType=self.activation_critic,
-                                            img_sz=self.img_sz,
-                                            kernel_sz=self.kernel_sz,
-                                            n_channel=self.n_channel,
-                                            use_sm=self.use_sm,
-                                            use_ln=self.use_ln,
-                                            device=self.device,
-                                            verbose=verbose
+    def build_network(self, CONFIG, verbose=True):
+        self.critic = SACTwinnedQNetwork(
+            input_n_channel=self.obsChannel,
+            img_sz=self.img_sz,
+            actionDim=self.actionDim,
+            mlp_dim=CONFIG.MLP_DIM['critic'],
+            actType=CONFIG.ACTIVATION['critic'],
+            kernel_sz=CONFIG.KERNEL_SIZE,
+            n_channel=CONFIG.N_CHANNEL,
+            use_sm=CONFIG.USE_SM,
+            use_ln=CONFIG.USE_LN,
+            device=self.device,
+            verbose=verbose
         )
         self.criticTarget = copy.deepcopy(self.critic)
-        self.actor = SACPiNetwork(  input_n_channel=3,
-                                    mlp_dim=self.mlp_dim_actor,
-                                    actionDim=self.actionDim,
-                                    actionMag=self.actionMag,
-                                    actType=self.activation_actor,
-                                    img_sz=self.img_sz,
-                                    kernel_sz=self.kernel_sz,
-                                    n_channel=self.n_channel,
-                                    use_sm=self.use_sm,
-                                    use_ln=self.use_ln,
-                                    device=self.device,
-                                    verbose=verbose
-        )
+
         if verbose:
             print("\nThe actor shares the same encoder with the critic.")
-            print('Total parameters in actor: {}'.format(sum(p.numel() for p in self.actor.parameters() if p.requires_grad)))
+        self.actor = SACPiNetwork(
+            input_n_channel=self.obsChannel,
+            img_sz=self.img_sz,
+            actionDim=self.actionDim,
+            actionMag=self.actionMag,
+            mlp_dim=CONFIG.MLP_DIM['actor'],
+            actType=CONFIG.ACTIVATION['actor'],
+            kernel_sz=CONFIG.KERNEL_SIZE,
+            n_channel=CONFIG.N_CHANNEL,
+            use_sm=CONFIG.USE_SM,
+            use_ln=CONFIG.USE_LN,
+            device=self.device,
+            verbose=verbose
+        )
 
         # Tie weights for conv layers
         self.actor.encoder.copy_conv_weights_from(self.critic.encoder)
 
         # Set up optimizer
-        self.build_optimizer()  # from SAC
+        self.build_optimizer()
 
         # Initialize alpha
         self.reset_alpha()

@@ -23,7 +23,7 @@ timestr = time.strftime("%Y-%m-%d-%H_%M")
 #= AGENT
 from RARL.utils import save_obj
 from RARL.SAC_image import SAC_image
-from RARL.config import SACImageConfig
+from RARL.config import TrainingConfig, NNConfig
 
 #= ENV
 from safe_rl.navigation_obs_pb_cont import NavigationObsPBEnvCont
@@ -233,33 +233,28 @@ else:
 MLP_DIM = {'critic':args.dim_critic, 'actor':args.dim_actor}
 ACTIVATION = {'critic':args.actType, 'actor':args.actType}
 
-CONFIG = SACImageConfig(
+CONFIG = TrainingConfig(
     # Environment
     ENV_NAME=env_name,
     SEED=args.randomSeed,
     IMG_SZ=img_sz,
     ACTION_MAG=float(actionLim),
     ACTION_DIM=actionDim,
+    OBS_CHANNEL=env.num_img_channel,
     # Agent
+    MODE='safety',
+    TERMINAL_TYPE='max',
     DEVICE=device,
     # Training Setting
+    TRAIN_BACKUP=False,
     MAX_UPDATES=maxUpdates,
     MAX_EP_STEPS=args.maxSteps,
     MEMORY_CAPACITY=args.memoryCapacity,
     BATCH_SIZE=args.batchSize,
     ALPHA=args.alpha,
     LEARN_ALPHA=args.learn_alpha,
-    # RL Type
-    MODE=args.mode,
-    TERMINAL_TYPE=args.terminalType,
-    # NN Architecture
-    USE_BN=False,
-    USE_LN=args.layer_norm,
-    USE_SM=True,
-    KERNEL_SIZE=args.kernel_sz,
-    N_CHANNEL=args.n_channel,
-    MLP_DIM=MLP_DIM,
-    ACTIVATION=ACTIVATION,
+    TAU=0.01,
+    MAX_MODEL=50,
     # Learning Rate and Discount Factor Scheduler
     GAMMA=args.gamma,
     GAMMA_PERIOD=GAMMA_PERIOD,
@@ -278,9 +273,19 @@ CONFIG = SACImageConfig(
     LR_Al_DECAY=0.9,
 )
 
+CONFIG_ARCH = NNConfig(
+    USE_BN=False,
+    USE_LN=args.layer_norm,
+    USE_SM=True,
+    KERNEL_SIZE=args.kernel_sz,
+    N_CHANNEL=args.n_channel,
+    MLP_DIM=MLP_DIM,
+    ACTIVATION=ACTIVATION
+)
+
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
-agent = SAC_image(CONFIG)
+agent = SAC_image(CONFIG, CONFIG_ARCH)
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
