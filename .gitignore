@@ -118,3 +118,9 @@ venv.bak/
 # mac and vscode
 *.DS_Store
 *.code-workspace
+.vscode
+
+# KC's untracked files
+sim_car_one.py
+sim_car_one_TD3.py
+sim_show.py
