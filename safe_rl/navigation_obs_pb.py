@@ -410,7 +410,7 @@ class NavigationObsPBEnv(gym.Env):
         #! Even though we have a buffer here, we still have observations that do not
         #! have the obstacle in the FoV. If possible, I want the done flag to be raised
         #! exactly when the agent hits the obstacle, so the shielding criteria and the
-        #!  backup policy are more easily evaluated.
+        #! backup policy are more easily evaluated.
         # fail = g_x >= -0.01 # prevent bad image at the boundary - small value to buffer
         fail = (g_x > 0)
         success = l_x <= 0
@@ -884,6 +884,7 @@ class NavigationObsPBEnv(gym.Env):
             fig.tight_layout()
 
             ax.set_xlabel(r'$\theta={:.0f}^\circ$'.format(theta*180/np.pi), fontsize=28)
+        return fig
 
 
     def plot_v_values(self, q_func, fig, ax, theta=np.pi/2,
