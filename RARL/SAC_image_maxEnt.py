@@ -44,7 +44,7 @@ class SAC_image_maxEnt(SAC_image):
         self.mlp_dim_disc = [256, 256]
         self.LR_D = CONFIG.LR_D
         self.fit_freq = CONFIG.FIT_FREQ
-        self.fit_freq_rate = 1   # every optimize
+        self.fit_freq_rate = 1.0   # every optimize
         self.aug_reward_range = CONFIG.AUG_REWARD_RANGE
         self.disc_batch_size = 64
 
@@ -352,20 +352,13 @@ class SAC_image_maxEnt(SAC_image):
 
         # Update critic
         loss_q = self.update_critic(batch)
-        
-        # Update discriminator - sample batches separately
-        loss_disc = 0
-        for _ in range(self.fit_freq):
-            loss_disc += self.update_disc()
-        loss_disc /= self.fit_freq
-            # print(loss_disc)
 
         # Update actor and target critic
         loss_pi, loss_entropy, loss_alpha = 0, 0, 0
         if timer % self.actor_freq == 0:
             loss_pi, loss_entropy, loss_alpha = self.update_actor(batch)
-            print('\r{:d}: (q, pi, ent, alpha, disc) = ({:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}).'.format(
-                self.cntUpdate, loss_q, loss_pi, loss_entropy, loss_alpha, loss_disc), end=' ')
+            print('\r{:d}: (q, pi, ent, alpha) = ({:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}).'.format(
+                self.cntUpdate, loss_q, loss_pi, loss_entropy, loss_alpha), end=' ')
 
             self.update_target_networks()
 
@@ -373,7 +366,7 @@ class SAC_image_maxEnt(SAC_image):
         self.actor.eval()
         self.disc.eval()
 
-        return loss_q, loss_pi, loss_entropy, loss_alpha, loss_disc
+        return loss_q, loss_pi, loss_entropy, loss_alpha
 
 
     def learn(  self, env, MAX_UPDATES=2000000, MAX_EP_STEPS=50,
@@ -387,30 +380,30 @@ class SAC_image_maxEnt(SAC_image):
                 showBool=False, vmin=-1, vmax=1, numRndTraj=200,
                 storeModel=True, saveBest=False, outFolder='RA', verbose=True):
 
-        # import visdom
-        # useVis = 1
-        # if useVis:
-        #     vis = visdom.Visdom(env='test_sac_maxent_dense_2', port=8098)
-        #     q_loss_window = vis.line(
-        #         X=array([[0]]),
-        #         Y=array([[0]]),
-        #         opts=dict(xlabel='epoch', title='Q Loss'))
-        #     pi_loss_window = vis.line(
-        #         X=array([[0]]),
-        #         Y=array([[0]]),
-        #         opts=dict(xlabel='epoch', title='Pi Loss'))
-        #     disc_loss_window = vis.line(
-        #         X=array([[0]]),
-        #         Y=array([[0]]),
-        #         opts=dict(xlabel='epoch', title='Disc Loss'))
-        #     entropy_window = vis.line(
-        #         X=array([[0]]),
-        #         Y=array([[0]]),
-        #         opts=dict(xlabel='epoch', title='Entropy'))
-        #     success_window = vis.line(
-        #         X=array([[0]]),
-        #         Y=array([[0]]),
-        #         opts=dict(xlabel='epoch', title='Success'))
+        useVis = 0
+        if useVis:
+            import visdom
+            vis = visdom.Visdom(env='test_sac_maxent_dense_multi_obs_0', port=8098)
+            q_loss_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Q Loss'))
+            pi_loss_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Pi Loss'))
+            disc_loss_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Disc Loss'))
+            entropy_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Entropy'))
+            success_window = vis.line(
+                X=array([[0]]),
+                Y=array([[0]]),
+                opts=dict(xlabel='epoch', title='Success'))
 
         # == Build up networks
         self.build_network(verbose=verbose)
@@ -522,10 +515,10 @@ class SAC_image_maxEnt(SAC_image):
                         unfinish = np.sum(results==0) / results.shape[0]
                         trainProgress.append([success, failure, unfinish])
 
-                    # if useVis:
-                    #     vis.line(X=array([[self.cntUpdate]]),
-                    #                 Y=array([[success]]),
-                    #             win=success_window,update='append')
+                    if useVis:
+                        vis.line(X=array([[self.cntUpdate]]),
+                                    Y=array([[success]]),
+                                win=success_window,update='append')
 
                     if verbose:
                         lr = self.actorOptimizer.state_dict()['param_groups'][0]['lr']
@@ -572,23 +565,31 @@ class SAC_image_maxEnt(SAC_image):
                 self.cntUpdate += 1
                 if self.cntUpdate >= minStepBeforeOptimize and self.cntUpdate % optimizeFreq == 0:
                     loss_q, loss_pi, loss_entropy, loss_alpha = 0, 0, 0, 0
+
+                    # Update discriminator - sample batches separately
+                    loss_disc = 0
+                    for timer in range(numUpdatePerOptimize*self.fit_freq):
+                        loss_disc += self.update_disc()
+                    loss_disc /= (numUpdatePerOptimize*self.fit_freq)
+
+                    # Update critic/actor
                     for timer in range(numUpdatePerOptimize):
-                        loss_q, loss_pi, loss_entropy, loss_alpha, loss_disc = self.update(timer)
+                        loss_q, loss_pi, loss_entropy, loss_alpha = self.update(timer)
                         trainingRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha, loss_disc])
 
-                        # if (timer == numUpdatePerOptimize-1) and useVis:
-                        #     vis.line(X=array([[self.cntUpdate]]),
-                        #                 Y=array([[loss_q]]),
-                        #             win=q_loss_window,update='append')
-                        #     vis.line(X=array([[self.cntUpdate]]),
-                        #                 Y=array([[loss_pi]]),
-                        #             win=pi_loss_window,update='append')
-                        #     vis.line(X=array([[self.cntUpdate]]),
-                        #                 Y=array([[loss_entropy]]),
-                        #             win=entropy_window,update='append')
-                        #     vis.line(X=array([[self.cntUpdate]]),
-                        #                 Y=array([[loss_disc]]),
-                        #             win=disc_loss_window,update='append')
+                        if (timer == numUpdatePerOptimize-1) and useVis:
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_q]]),
+                                    win=q_loss_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_pi]]),
+                                    win=pi_loss_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_entropy]]),
+                                    win=entropy_window,update='append')
+                            vis.line(X=array([[self.cntUpdate]]),
+                                        Y=array([[loss_disc]]),
+                                    win=disc_loss_window,update='append')
 
                     # Update gamma, lr etc.
                     self.updateHyperParam()
