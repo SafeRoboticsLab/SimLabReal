@@ -51,7 +51,7 @@ parser.add_argument("-ms",  "--maxSteps",         help="maximal #gradient update
 parser.add_argument("-ut",  "--updateTimes",        help="hyper-param. update times",
     default=20,     type=int)
 parser.add_argument("-mc",  "--memoryCapacity",     help="memoryCapacity",
-    default=50000,  type=int)
+    default=20000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",        help="check period",
     default=10000,  type=int)
 parser.add_argument("-bs",  "--batchSize",          help="batch size",
@@ -68,10 +68,14 @@ parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate 
 #     default=0.99,   type=float)
 parser.add_argument("-al",  "--alpha",                      help="alpha",
     default=0.2,    type=float)
-parser.add_argument("-ep", "--epsPeriod",                   help="period of eps update",
+parser.add_argument("-ep",  "--epsPeriod",                  help="period of eps update",
     default=100,    type=int)
-parser.add_argument("-rp", "--rhoPeriod",                   help="period of rho update",
+parser.add_argument("-ed",  "--epsDecay",                   help="eps decay",
+    default=0.8,    type=float)
+parser.add_argument("-rp",  "--rhoPeriod",                  help="period of rho update",
     default=100,    type=int)
+parser.add_argument("-rd",  "--rhoDecay",                   help="rho decay",
+    default=0.9,    type=float)
 parser.add_argument("-ues", "--optimize_freq",              help="optimization freq.",
     default=100,    type=int)
 parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
@@ -237,11 +241,11 @@ CONFIG = SimpleNamespace()
 CONFIG.DEVICE = device
 CONFIG.EPS = 0.
 CONFIG.EPS_PERIOD = args.epsPeriod
-CONFIG.EPS_DECAY = 0.8
+CONFIG.EPS_DECAY = args.epsDecay
 CONFIG.EPS_END = 1.
 CONFIG.RHO = 0.5
 CONFIG.RHO_PERIOD = args.rhoPeriod
-CONFIG.RHO_DECAY = 0.8
+CONFIG.RHO_DECAY = args.rhoDecay
 CONFIG.RHO_END = 0.1
 CONFIG.MEMORY_CAPACITY = args.memoryCapacity
 CONFIG.BATCH_SIZE=args.batchSize
