@@ -40,11 +40,11 @@ class PolicyShieldingJoint(object):
         # self.CONFIG_PERFORMANCE = CONFIG_PERFORMANCE
         # self.CONFIG_BACKUP = CONFIG_BACKUP
 
-        print("== Constructing performance agent ==")
+        print("= Constructing performance agent")
         self.performance = SAC_mini(
             CONFIG_PERFORMANCE['train'], CONFIG_PERFORMANCE['arch'], verbose)
 
-        print("== Constructing backup agent ==")
+        print("= Constructing backup agent")
         self.backup = SAC_mini(
             CONFIG_BACKUP['train'], CONFIG_BACKUP['arch'], verbose)
 
