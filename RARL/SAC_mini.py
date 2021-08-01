@@ -13,8 +13,9 @@ import os
 
 from .model import SACPiNetwork, SACTwinnedQNetwork
 from .scheduler import StepLRMargin
-from .utils import soft_update
+from .utils import soft_update, save_model
 import copy
+import pickle
 
 class SAC_mini(object):
     def __init__(self, CONFIG, CONFIG_ARCH, verbose=True):
@@ -27,6 +28,8 @@ class SAC_mini(object):
         """
 
         self.saved = False
+        self.CONFIG = CONFIG
+        self.CONFIG_ARCH = CONFIG_ARCH
 
         #== ENV PARAM ==
         self.obsChannel = CONFIG.OBS_CHANNEL
@@ -122,6 +125,25 @@ class SAC_mini(object):
 
         # Initialize alpha
         self.reset_alpha()
+
+
+    def build_optimizer(self):
+        self.criticOptimizer = Adam(self.critic.parameters(), lr=self.LR_C)
+        self.actorOptimizer = Adam(self.actor.parameters(), lr=self.LR_A)
+
+        self.criticScheduler = lr_scheduler.StepLR(self.criticOptimizer,
+            step_size=self.LR_C_PERIOD, gamma=self.LR_C_DECAY)
+        self.actorScheduler = lr_scheduler.StepLR(self.actorOptimizer,
+            step_size=self.LR_A_PERIOD, gamma=self.LR_A_DECAY)
+
+        if self.LEARN_ALPHA:
+            self.log_alpha.requires_grad = True
+            self.log_alphaOptimizer = Adam([self.log_alpha], lr=self.LR_Al)
+            self.log_alphaScheduler = lr_scheduler.StepLR(
+                self.log_alphaOptimizer,
+                step_size=self.LR_Al_PERIOD, gamma=self.LR_Al_DECAY)
+
+        self.max_grad_norm = .1
 
 
     def reset_alpha(self):
@@ -335,9 +357,6 @@ class SAC_mini(object):
         loss_pi, loss_entropy, loss_alpha = 0, 0, 0
         if timer % update_period == 0:
             loss_pi, loss_entropy, loss_alpha = self.update_actor(batch)
-            print('\r{:d}: (q, pi, ent, alpha) = ({:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}).'.format(
-                self.cntUpdate, loss_q, loss_pi, loss_entropy, loss_alpha), end=' ')
-
             self.update_target_networks()
 
         self.critic.eval()
@@ -361,3 +380,57 @@ class SAC_mini(object):
             [info['l_x'] for info in batch.info]).to(self.device).view(-1)
 
         return non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x
+
+
+    def save(self, step, logs_path):
+        path_c = os.path.join(logs_path, 'critic')
+        path_a = os.path.join(logs_path, 'actor')
+        save_model(self.critic, step, path_c, 'critic', self.MAX_MODEL)
+        save_model(self.actor,  step, path_a, 'actor',  self.MAX_MODEL)
+        if not self.saved:
+            config_path = os.path.join(logs_path, "CONFIG.pkl")
+            pickle.dump(self.CONFIG, open(config_path, "wb"))
+            config_path = os.path.join(logs_path, "CONFIG_ARCH.pkl")
+            pickle.dump(self.CONFIG_ARCH, open(config_path, "wb"))
+            self.saved = True
+
+
+    def check(self, env, cntStep, MAX_EVAL_EP_STEPS, numRndTraj, verbose=True):
+        if self.mode=='safety':
+            endType = 'fail'
+        else:
+            endType = 'TF'
+
+        self.actor.eval()
+        self.critic.eval()
+        policy = self.actor  # mean only and no std
+
+        results = env.simulate_trajectories(policy,
+            T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj,
+            endType=endType, sample_inside_obs=False,
+            sample_inside_tar=False)[1]
+        if self.mode == 'safety':
+            failure  = np.sum(results==-1)/ results.shape[0]
+            success  =  1 - failure
+            trainProgress = np.array([success, failure])
+        else:
+            success  = np.sum(results==1) / results.shape[0]
+            failure  = np.sum(results==-1)/ results.shape[0]
+            unfinish = np.sum(results==0) / results.shape[0]
+            trainProgress = np.array([success, failure, unfinish])
+
+        if verbose:
+            lr = self.actorOptimizer.state_dict()['param_groups'][0]['lr']
+            print('\n{} policy after [{}] steps:'.format(self.mode, cntStep))
+            print('  - gamma={:.6f}, lr={:.1e}, alpha={:.1e}.'.format(
+                self.GAMMA, lr, self.alpha))
+            if self.mode == 'safety':
+                print('  - success/failure ratio:', end=' ')
+            else:
+                print('  - success/failure/unfinished ratio:', end=' ')
+            with np.printoptions(formatter={'float': '{: .2f}'.format}):
+                print(trainProgress)
+        self.actor.train()
+        self.critic.train()
+
+        return trainProgress

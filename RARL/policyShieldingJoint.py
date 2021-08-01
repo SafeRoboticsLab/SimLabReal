@@ -14,12 +14,10 @@ import os
 import pickle
 import time
 
-from .model import SACPiNetwork, SACTwinnedQNetwork
-from .scheduler import StepLRMargin
+from .scheduler import StepLRMargin, StepLR
 from .ReplayMemory import ReplayMemory
-from .utils import soft_update, save_model
-from .SAC_image import SAC_image
-import copy
+# from .utils import save_model
+from .SAC_mini import SAC_mini
 
 Transition = namedtuple('Transition', ['s', 'a', 'r', 's_', 'info'])
 
@@ -34,41 +32,74 @@ class PolicyShieldingJoint(object):
             CONFIG (Class object): hyper-parameter configuration.
             verbose (bool, optional): print info or not. Defaults to True.
         """
+        self.memory = ReplayMemory(CONFIG.MEMORY_CAPACITY)
+        self.saved = False
+        self.device = CONFIG.DEVICE
+        self.BATCH_SIZE = CONFIG.BATCH_SIZE
+        self.CONFIG = CONFIG
+        # self.CONFIG_PERFORMANCE = CONFIG_PERFORMANCE
+        # self.CONFIG_BACKUP = CONFIG_BACKUP
+
         print("== Constructing performance agent ==")
-        self.performance = SAC_image(
+        self.performance = SAC_mini(
             CONFIG_PERFORMANCE['train'], CONFIG_PERFORMANCE['arch'], verbose)
+
         print("== Constructing backup agent ==")
-        self.backup = SAC_image(
+        self.backup = SAC_mini(
             CONFIG_BACKUP['train'], CONFIG_BACKUP['arch'], verbose)
-        # probability to activate shielding
-        self.eps = StepLRMargin(initValue=CONFIG.EPS,
+
+        # probability to activate shielding: -> 1 and in the timescale of episodes
+        self.EpsilonScheduler = StepLRMargin(initValue=CONFIG.EPS,
             period=CONFIG.EPS_PERIOD, decay=CONFIG.EPS_DECAY,
             endValue=CONFIG.EPS_END, goalValue=1.)
-        # ratio of training episodes using backup policy
-        self.rho = 0.5
+        self.EPS = self.EpsilonScheduler.get_variable()
+
+        # ratio of episodes using backup policy: -> 0.1 and in the timescale of episodes
+        self.RhoScheduler = StepLR(initValue=CONFIG.RHO,
+            period=CONFIG.RHO_PERIOD, decay=CONFIG.RHO_DECAY,
+            endValue=CONFIG.RHO_END)
+        self.RHO = self.RhoScheduler.get_variable()
 
 
-    def performanceStateValue(self, obs):
+    def performanceValue(self, obs):
         obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
         u = self.performance.actor(obsTensor).detach()
         v = self.performance.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
         return v
 
 
-    def backupStateValue(self, obs):
+    def backupValue(self, obs):
         obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
         u = self.backup.actor(obsTensor).detach()
         v = self.backup.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
         return v
 
 
+    def initBuffer(self, env, ratio=1.0):
+        cnt = 0
+        s = env.reset()
+        while len(self.memory) < self.memory.capacity * ratio:
+            cnt += 1
+            print('\rWarmup Buffer [{:d}]'.format(cnt), end='')
+            a = env.action_space.sample()
+            # a = self.genRandomActions(1)[0]
+            s_, r, done, info = env.step(a)
+            s_ = None if done else s_
+            self.store_transition(s, a, r, s_, info)
+            if done:
+                s = env.reset()
+            else:
+                s = s_
+        print(" --- Warmup Buffer Ends")
+
+
     def learn(  self, env, shieldDict,
-                MAX_UPDATES=200000, MAX_EP_STEPS=100, MAX_EVAL_EP_STEPS=100,
+                MAX_STEPS=200000, MAX_EP_STEPS=100, MAX_EVAL_EP_STEPS=100,
                 warmupBuffer=True, warmupBufferRatio=1.0,
                 optimizeFreq=100, numUpdatePerOptimize=100,
-                curUpdates=None, checkPeriod=10000,
+                curSteps=None, checkPeriod=10000,
                 plotFigure=True, storeFigure=False,
-                showBool=False, vmin=-1, vmax=1, numRndTraj=100,
+                vmin=-1, vmax=1, numRndTraj=100,
                 storeModel=True, saveBest=False, outFolder='RA', verbose=True):
 
         # == Warmup Buffer ==
@@ -79,169 +110,178 @@ class PolicyShieldingJoint(object):
 
         # == Main Training ==
         startLearning = time.time()
-        trainRecords = []
-        trainProgress = []
+        trainRecords = [[], []]
+        trainProgress = [[], []]
         violationRecord = []
-        checkPointSucc = 0.
+        cpSuccBackup = 0.
+        cpSuccPerf = 0.
         ep = 0
-        safetyViolationCnt = 0
+        cntSafetyViolation = 0
 
         if storeModel:
             modelFolder = os.path.join(outFolder, 'model')
-            os.makedirs(modelFolder, exist_ok=True)
+            modelFolderPerf   = os.path.join(modelFolder, 'performance')
+            modelFolderBackup = os.path.join(modelFolder, 'backup')
+            os.makedirs(modelFolderPerf, exist_ok=True)
+            os.makedirs(modelFolderBackup, exist_ok=True)
+            self.save(modelFolder)
 
         if storeFigure:
-            figureFolder = os.path.join(outFolder, 'figure')
-            os.makedirs(figureFolder, exist_ok=True)
+            figFolderPerf   = os.path.join(outFolder, 'figure', 'performance')
+            figFolderBackup = os.path.join(outFolder, 'figure', 'backup')
+            os.makedirs(figFolderPerf, exist_ok=True)
+            os.makedirs(figFolderBackup, exist_ok=True)
 
-        if curUpdates is not None:
-            self.cntUpdate = curUpdates
-            print("starting from {:d} updates".format(self.cntUpdate))
-
-        if self.mode=='safety':
-            endType = 'fail'
+        if curSteps is None:
+            self.cntStep = 0
         else:
-            endType = 'TF'
+            self.cntStep = curSteps
+            print("starting from {:d} steps".format(self.cntStep))
+        
 
-        while self.cntUpdate <= MAX_UPDATES:
+        while self.cntStep <= MAX_STEPS:
             s = env.reset()
-            epCost = np.inf
             ep += 1
-            print('\n[{}]: '.format(ep))
+            print('\nAfter [{:d}] episodes:'.format(ep))
             print(env._state)
+            # Choose which policy for this training episode
+            if (np.random.rand() < self.RHO):
+                on_policy = self.backup
+                use_perf = False
+                print("  - Use backup policy")
+            else:
+                on_policy = self.performance
+                use_perf = True
+                print("  - Use performance policy")
+            apply_shielding = (np.random.rand() < self.EPS) and (use_perf)
+            if apply_shielding:
+                print("  - Shielding activated in this episode")
 
             # Rollout
             for t in range(MAX_EP_STEPS):
                 # Select action
                 with torch.no_grad():
-                    a, _ = self.actor.sample(
+                    a, _ = on_policy.actor.sample(
                         torch.from_numpy(s).float().to(self.device))
                     a = a.view(-1).cpu().numpy()
 
-                # Check Safety
-                # ? Check if correct
+                # Shielding
                 shieldType = shieldDict['Type']
-                if shieldType == 'none':
-                    pass
-                else:
+                assert (shieldType is 'value') or (shieldType is 'simulator'),\
+                    'Invalid Shielding Type!'
+                if apply_shielding:
+                    # get the next state
                     w = env.getTurningRate(a)
                     _state = env.integrate_forward(env._state, w)
                     obs = env._get_obs(_state)
-
                     if shieldType == 'value':
-                        safetyValue = self.backupStateValue(obs)
+                        safetyValue = self.backupValue(obs)
                         shieldFlag = (safetyValue > shieldDict['Threshold'])
                     elif shieldType == 'simulator':
                         T_ro = shieldDict['T_rollout']
-                        _, result, _, _ = env.simulate_one_trajectory(self.actor_backup,
+                        _, result, _, _ = env.simulate_one_trajectory(self.backup.actor,
                             T=T_ro, endType='fail', state=_state, latent_prior=None)
                         shieldFlag = (result == -1)
-
                     if shieldFlag:
-                        a = self.actor_backup(s)
+                        a = self.backup.actor(s)
 
                 # Interact with env
                 s_, r, done, info = env.step(a)
                 s_ = None if done else s_
-                epCost = max(info["g_x"], min(epCost, info["l_x"]))
 
                 # Store the transition in memory
                 self.store_transition(s, a, r, s_, info)
                 s = s_
 
-                # Check after fixed number of gradient updates
-                if self.cntUpdate != 0 and self.cntUpdate % checkPeriod == 0:
-                    self.actor.eval()
-                    self.critic.eval()
-                    policy = self.actor  # mean only and no std
-
-                    results = env.simulate_trajectories(policy,
-                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj,
-                        endType=endType, sample_inside_obs=False,
-                        sample_inside_tar=False)[1]
-                    if self.mode == 'safety':
-                        failure  = np.sum(results==-1)/ results.shape[0]
-                        success  =  1 - failure
-                        trainProgress.append([success, failure])
-                    else:
-                        success  = np.sum(results==1) / results.shape[0]
-                        failure  = np.sum(results==-1)/ results.shape[0]
-                        unfinish = np.sum(results==0) / results.shape[0]
-                        trainProgress.append([success, failure, unfinish])
-
-                    if verbose:
-                        lr = self.actorOptimizer.state_dict()['param_groups'][0]['lr']
-                        print('\nAfter [{:d}] updates:'.format(self.cntUpdate))
-                        print('  - gamma={:.6f}, lr={:.1e}, alpha={:.1e}.'.format(
-                            self.GAMMA, lr, self.alpha))
-                        if self.mode == 'safety':
-                            print('  - success/failure ratio:', end=' ')
-                        else:
-                            print('  - success/failure/unfinished ratio:', end=' ')
-                        with np.printoptions(formatter={'float': '{: .2f}'.format}):
-                            print(np.array(trainProgress[-1]))
-                    self.actor.train()
-                    self.critic.train()
+                # Check after fixed number of steps
+                if self.cntStep != 0 and self.cntStep % checkPeriod == 0:
+                    progressPerf = self.performance.check(env, self.cntStep,
+                        MAX_EVAL_EP_STEPS, numRndTraj, verbose=True)
+                    progressBackup = self.backup.check(env, self.cntStep,
+                        MAX_EVAL_EP_STEPS, numRndTraj, verbose=True)
+                    trainProgress[0].append(progressPerf)
+                    trainProgress[1].append(progressBackup)
 
                     if storeModel:
                         if saveBest:
-                            if success > checkPointSucc:
-                                checkPointSucc = success
-                                self.save(self.cntUpdate, modelFolder)
+                            if progressPerf[0] > cpSuccPerf:
+                                cpSuccPerf = progressPerf[0]
+                                self.performance.save(self.cntStep, modelFolderPerf)
+                            if progressBackup[0] > cpSuccBackup:
+                                cpSuccBackup = progressBackup[0]
+                                self.backup.save(self.cntStep, modelFolderBackup)
                         else:
-                            self.save(self.cntUpdate, modelFolder, agentType='performance')
+                            self.performance.save(self.cntStep, modelFolderPerf)
+                            self.backup.save(self.cntStep, modelFolderBackup)
 
                     if plotFigure or storeFigure:
-                        if showBool:
-                            env.visualize(self.performanceStateValue, policy,
-                                vmin=0, boolPlot=True)
-                        else:
-                            env.visualize(self.performanceStateValue, policy,
-                                vmin=vmin, vmax=vmax, cmap='seismic', normalize_v=True)
+                        figPerf = env.visualize(self.performanceValue,
+                            self.performance.actor, vmin=vmin, vmax=vmax,
+                            cmap='seismic', normalize_v=True)
+                        figBackup = env.visualize(self.backupValue,
+                            self.backup.actor, vmin=vmin, vmax=vmax, cmap='seismic')
 
                         if storeFigure:
-                            figurePath = os.path.join(figureFolder,
-                                '{:d}.png'.format(self.cntUpdate))
-                            plt.savefig(figurePath)
+                            figPerf.savefig(os.path.join(
+                                figFolderPerf,   '{:d}.png'.format(self.cntStep))
+                            )
+                            figBackup.savefig(os.path.join(
+                                figFolderBackup, '{:d}.png'.format(self.cntStep))
+                            )
                             plt.close()
                         if plotFigure:
-                            plt.show()
-                            plt.pause(0.001)
+                            figPerf.show()
+                            figBackup.show()
+                            plt.pause(0.01)
                             plt.close()
 
-                # Perform one step of the optimization (on the target network)
+                # Time to update
                 loss_q, loss_pi, loss_entropy, loss_alpha = 0, 0, 0, 0
-                if self.cntUpdate % optimizeFreq == 0:
+                if self.cntStep % optimizeFreq == 0:
                     for timer in range(numUpdatePerOptimize):
-                        loss_q, loss_pi, loss_entropy, loss_alpha = self.update(timer)
-                        trainRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha])
+                        transitions = self.memory.sample(self.BATCH_SIZE)
+                        batch = Transition(*zip(*transitions))
+                        loss_q, loss_pi, loss_entropy, loss_alpha = \
+                            self.performance.update(batch, timer, update_period=2)
+                        trainRecords[0].append([loss_q, loss_pi, loss_entropy, loss_alpha])
+                        loss_q, loss_pi, loss_entropy, loss_alpha = \
+                            self.backup.update(batch, timer, update_period=2)
+                        trainRecords[1].append([loss_q, loss_pi, loss_entropy, loss_alpha])
 
-                self.cntUpdate += 1
+                self.cntStep += 1
 
                 # Update gamma, lr etc.
-                self.updateHyperParam()
-                if self.cntUpdate % self.GAMMA_PERIOD == 0 and self.LEARN_ALPHA:
-                    self.reset_alpha()
+                self.performance.updateHyperParam()
+                self.backup.updateHyperParam()
 
                 # Terminate early
                 if done:
                     # g_x = env.safety_margin(env._state, return_boundary=False)
                     # if g_x > 0:
-                    safetyViolationCnt += 1
-                    violationRecord.append(safetyViolationCnt)
+                    cntSafetyViolation += 1
+                    violationRecord.append(cntSafetyViolation)
                     break
                 if t == (MAX_EP_STEPS-1):
-                    violationRecord.append(safetyViolationCnt)
+                    violationRecord.append(cntSafetyViolation)
+
+            # Update epsilon, rho
+            print('  - This episode has {} steps'.format(t))
+            print('  - Safety violations: {:d}'.format(cntSafetyViolation))
+            print('  - eps={:.2f}, rho={:.2f}'.format(self.EPS, self.RHO))
+            self.EpsilonScheduler.step()
+            self.EPS = self.EpsilonScheduler.get_variable()
+            self.RhoScheduler.step()
+            self.RHO = self.RhoScheduler.get_variable()
 
         endLearning = time.time()
         timeInitBuffer = endInitBuffer - startInitBuffer
         timeLearning = endLearning - startLearning
-        self.save(self.cntUpdate, modelFolder, agentType='performance')
         print('\nInitBuffer: {:.1f}, Learning: {:.1f}'.format(
             timeInitBuffer, timeLearning))
 
         trainRecords = np.array(trainRecords)
-        trainProgress = np.array(trainProgress)
+        trainProgress[0] = np.stack( trainProgress[0], axis=0 )
+        trainProgress[1] = np.stack( trainProgress[1], axis=0 )
         return trainRecords, trainProgress, violationRecord
     # endregion
 
@@ -251,23 +291,30 @@ class PolicyShieldingJoint(object):
         self.memory.update(Transition(*args))
 
 
-    def save(self, step, logs_path, agentType):
-        logs_path_critic = os.path.join(logs_path, agentType, 'critic')
-        logs_path_actor = os.path.join(logs_path, agentType, 'actor')
-        if agentType == 'backup':
-            save_model(self.critic_backup, step, logs_path_critic, 'critic', self.MAX_MODEL)
-            save_model(self.actor_backup,  step, logs_path_actor, 'actor',  self.MAX_MODEL)
-        elif agentType == 'performance':
-            save_model(self.critic, step, logs_path_critic, 'critic', self.MAX_MODEL)
-            save_model(self.actor,  step, logs_path_actor, 'actor',  self.MAX_MODEL)
+    def save(self, logs_path):
         if not self.saved:
             config_path = os.path.join(logs_path, "CONFIG.pkl")
             pickle.dump(self.CONFIG, open(config_path, "wb"))
-            config_path = os.path.join(logs_path, "CONFIG_PERFORMANCE.pkl")
-            pickle.dump(self.CONFIG_PERFORMANCE, open(config_path, "wb"))
-            config_path = os.path.join(logs_path, "CONFIG_BACKUP.pkl")
-            pickle.dump(self.CONFIG_BACKUP, open(config_path, "wb"))
             self.saved = True
+
+
+    # def save(self, step, logs_path, agentType):
+    #     path_c = os.path.join(logs_path, agentType, 'critic')
+    #     path_a = os.path.join(logs_path, agentType, 'actor')
+    #     if agentType == 'backup':
+    #         save_model(self.backup.critic, step, path_c, 'critic', self.MAX_MODEL)
+    #         save_model(self.backup.actor,  step, path_a, 'actor',  self.MAX_MODEL)
+    #     elif agentType == 'performance':
+    #         save_model(self.performance.critic, step, path_c, 'critic', self.MAX_MODEL)
+    #         save_model(self.performance.actor,  step, path_a, 'actor',  self.MAX_MODEL)
+    #     if not self.saved:
+    #         config_path = os.path.join(logs_path, "CONFIG.pkl")
+    #         pickle.dump(self.CONFIG, open(config_path, "wb"))
+    #         config_path = os.path.join(logs_path, "CONFIG_PERFORMANCE.pkl")
+    #         pickle.dump(self.CONFIG_PERFORMANCE, open(config_path, "wb"))
+    #         config_path = os.path.join(logs_path, "CONFIG_BACKUP.pkl")
+    #         pickle.dump(self.CONFIG_BACKUP, open(config_path, "wb"))
+    #         self.saved = True
 
 
     def restore(self, step, logs_path, agentType):
@@ -280,30 +327,29 @@ class PolicyShieldingJoint(object):
                 be critic/ and agent/ folders.
             agentType (str): performance policy or backup policy.
         """
-        logs_path_critic = os.path.join(
+        path_c = os.path.join(
             logs_path, agentType, 'critic', 'critic-{}.pth'.format(step))
-        logs_path_actor  = os.path.join(
+        path_a  = os.path.join(
             logs_path, agentType, 'actor',  'actor-{}.pth'.format(step))
         if agentType == 'backup':
-            self.critic_backup.load_state_dict(
-                torch.load(logs_path_critic, map_location=self.device))
-            self.critic_backup.to(self.device)
-            if self.train_backup:
-                self.criticTarget_backup.load_state_dict(
-                    torch.load(logs_path_critic, map_location=self.device))
-                self.criticTarget_backup.to(self.device)
-            self.actor_backup.load_state_dict(
-                torch.load(logs_path_actor, map_location=self.device))
-            self.actor_backup.to(self.device)
+            self.backup.critic.load_state_dict(
+                torch.load(path_c, map_location=self.device))
+            self.backup.critic.to(self.device)
+            self.backup.criticTarget.load_state_dict(
+                torch.load(path_c, map_location=self.device))
+            self.backup.criticTarget.to(self.device)
+            self.backup.actor.load_state_dict(
+                torch.load(path_a, map_location=self.device))
+            self.backup.actor.to(self.device)
         elif agentType == 'performance':
-            self.critic.load_state_dict(
-                torch.load(logs_path_critic, map_location=self.device))
-            self.critic.to(self.device)
-            self.criticTarget.load_state_dict(
-                torch.load(logs_path_critic, map_location=self.device))
-            self.criticTarget.to(self.device)
-            self.actor.load_state_dict(
-                torch.load(logs_path_actor, map_location=self.device))
-            self.actor.to(self.device)
-        print('  <= Restore {}-{}' .format(logs_path, step))
+            self.performance.critic.load_state_dict(
+                torch.load(path_c, map_location=self.device))
+            self.performance.critic.to(self.device)
+            self.performance.criticTarget.load_state_dict(
+                torch.load(path_c, map_location=self.device))
+            self.performance.criticTarget.to(self.device)
+            self.performance.actor.load_state_dict(
+                torch.load(path_a, map_location=self.device))
+            self.performance.actor.to(self.device)
+        print('  <= Restore model with {} updates from {}.'.format(step, logs_path))
     # endregion
