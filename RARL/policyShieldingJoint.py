@@ -137,7 +137,11 @@ class PolicyShieldingJoint(object):
         else:
             self.cntStep = curSteps
             print("starting from {:d} steps".format(self.cntStep))
-        
+
+        shieldType = shieldDict['Type']
+        # print(shieldType)
+        assert (shieldType == 'value') or (shieldType == 'simulator'),\
+            'Invalid Shielding Type!'
 
         while self.cntStep <= MAX_STEPS:
             s = env.reset()
@@ -166,9 +170,6 @@ class PolicyShieldingJoint(object):
                     a = a.view(-1).cpu().numpy()
 
                 # Shielding
-                shieldType = shieldDict['Type']
-                assert (shieldType is 'value') or (shieldType is 'simulator'),\
-                    'Invalid Shielding Type!'
                 if apply_shielding:
                     # get the next state
                     w = env.getTurningRate(a)
