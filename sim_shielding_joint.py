@@ -123,7 +123,7 @@ maxSteps = args.maxSteps
 updateTimes = args.updateTimes
 updatePeriod = int(maxSteps / updateTimes)
 
-fn = args.name
+fn = args.name + '-' + args.shieldType
 if args.fixed_init:
     fn = fn + '-fix'
 if args.showTime:
