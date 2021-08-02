@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import gym
 
 import os
@@ -70,10 +69,10 @@ if __name__ == '__main__':
 
     # Run 2 trials
     # states = [np.array([0.5, 0.0, 0]), None]  # about entering obstacle, facing target
-    # states = [np.array([0.2, 0.0, 0]), None]  # before obstable, facing target
+    states = [np.array([0.2, 0.0, 0]), None]  # before obstable, facing target
     # states = [np.array([0.6, 0.0, np.pi]), None]  # facing backward
     # states = [np.array([0.6, 0.8, np.pi/2]), None]    # facing wall
-    states = [np.array([1.4, 0, 0]), None]  # after obstacle, facing target
+    # states = [np.array([1.4, 0, 0]), None]  # after obstacle, facing target
     # states = [np.array([1.6, 0, 0]), None]  # about entering target
     for i in range(2):
         print('\n== {} =='.format(i))
@@ -93,7 +92,7 @@ if __name__ == '__main__':
             if render:
                 plt.imshow(obs[:3, :, :].transpose(1,2,0))
                 plt.show(block=False)    # Default is a blocking call
-                plt.pause(1.0)
+                plt.pause(0.3)
                 plt.close()
             if done:
                 break

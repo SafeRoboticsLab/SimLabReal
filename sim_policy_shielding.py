@@ -3,8 +3,8 @@
 #           Allen Z. Ren ( allen.ren@princeton.edu )
 
 # Examples:
-    # RA: python3 sim_car_one_SAC_image.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_car_one_SAC_image.py -sf -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -mc 1000 -m safety -n tmp
+    # RA: python3 sim_policy_shielding.py -sf -of scratch -n 999 -mc 50000
+    # python3 sim_policy_shielding.py -sf -lal -ln -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -mc 1000 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -22,62 +22,58 @@ timestr = time.strftime("%Y-%m-%d-%H_%M")
 
 #= AGENT
 from RARL.utils import save_obj
-from RARL.SAC_image import SAC_image
-from RARL.config import TrainingConfig, NNConfig
+from RARL.policyShielding import PolicyShielding
+from RARL.config import NNConfig, TrainingConfig
 
 #= ENV
 from safe_rl.navigation_obs_pb_cont import NavigationObsPBEnvCont
 
-#== ARGS ==
+# region: == ARGS ==
 parser = argparse.ArgumentParser()
 
 # environment parameters
-parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
-    default='fail',  type=str)
+# parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
+#     default='fail', type=str)
 parser.add_argument("-rnd", "--randomSeed",     help="random seed",
     default=0,      type=int)
 parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
-    default=100,    type=int)
+    default=500,    type=int)
 parser.add_argument("-mes", "--maxEvalSteps",   help="maximum eval steps",
-    default=100,    type=int)
-parser.add_argument("-ts",  "--targetScaling",  help="scaling of ell",
-    default=1.,     type=float)
+    default=250,    type=int)
+parser.add_argument("-fi",  "--fixed_init",     help="layer normalization",
+    action="store_true")
 
 # training scheme
-parser.add_argument("-w",   "--warmup",             help="warmup Q-network",
-    action="store_true")
-parser.add_argument("-wi",  "--warmupIter",         help="warmup iteration",
-    default=10000,  type=int)
 parser.add_argument("-wbr", "--warmupBufferRatio",  help="warmup buffer ratio",
-    default=1.0, type=float)
+    default=1.0,    type=float)
 parser.add_argument("-mu",  "--maxUpdates",         help="maximal #gradient updates",
-    default=800000, type=int)
+    default=200000, type=int)
 parser.add_argument("-ut",  "--updateTimes",        help="hyper-param. update times",
     default=20,     type=int)
 parser.add_argument("-mc",  "--memoryCapacity",     help="memoryCapacity",
     default=50000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",        help="check period",
-    default=1000,  type=int)
+    default=10000,  type=int)
 parser.add_argument("-bs",  "--batchSize",          help="batch size",
-    default=128,  type=int)
+    default=128,    type=int)
+parser.add_argument("-sht", "--shieldType",         help="when to raise shield flag",
+    default='none', type=str,   choices=['none', 'simulator', 'value'])
 
 # hyper-parameters
-parser.add_argument("-a",   "--annealing",                  help="gamma annealing",
-    action="store_true")
 parser.add_argument("-lr",  "--learningRate",               help="learning rate",
     default=1e-3,   type=float)
 parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate decay",
-    default=1.0,   type=float)
+    default=0.9,    type=float)
 parser.add_argument("-g",   "--gamma",                      help="contraction coeff.",
-    default=0.999, type=float)
+    default=0.99,   type=float)
 parser.add_argument("-al",  "--alpha",                      help="alpha",
-    default=0.2, type=float)
+    default=0.2,    type=float)
+parser.add_argument("-ues", "--optimize_freq",              help="optimization freq.",
+    default=100,    type=int)
+parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
+    default=100,    type=int)
 parser.add_argument("-lal", "--learn_alpha",                help="learn alpha",
     action="store_true")
-parser.add_argument("-ues", "--optimize_freq",              help="optimization freq.",
-    default=100, type=int)
-parser.add_argument("-nmo", "--num_update_per_optimize",    help="#updates per opt.",
-    default=100, type=int)
 
 # NN architecture:
 parser.add_argument("-ln",  "--layer_norm",     help="layer normalization",
@@ -93,15 +89,7 @@ parser.add_argument("-ksz", "--kernel_sz",      help="NN architecture",
 parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
 
-# RL type
-parser.add_argument("-m",   "--mode",           help="mode",
-    default='RA',   type=str)
-parser.add_argument("-tt",  "--terminalType",   help="terminal value",
-    default='g',    type=str)
-
 # file
-parser.add_argument("-vis",  "--visdom",        help="use Visdom",
-    action="store_true")
 parser.add_argument("-nx",  "--nx",             help="check period",
     default=101, type=int)
 parser.add_argument("-st",  "--showTime",       help="show timestr",
@@ -110,6 +98,8 @@ parser.add_argument("-n",   "--name",           help="extra name",
     default='', type=str)
 parser.add_argument("-of",  "--outFolder",      help="output file",
     default='/scratch/gpfs/kaichieh/',  type=str)
+# parser.add_argument("-bf",  "--backupFolder",   help="backup critic/actor",
+#     default='/scratch/gpfs/kaichieh/',  type=str)
 parser.add_argument("-pf",  "--plotFigure",     help="plot figures",
     action="store_true")
 parser.add_argument("-sf",  "--storeFigure",    help="store figures",
@@ -117,16 +107,19 @@ parser.add_argument("-sf",  "--storeFigure",    help="store figures",
 
 args = parser.parse_args()
 print(args)
+# endregion
 
 
-#== CONFIGURATION ==
+# region: == CONFIGURATION ==
 env_name = 'navigation_pac_ra_cont-v0'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
 
-fn = args.name + '-' + args.mode + '-' + args.doneType
+fn = args.name + '-shield_by_' + args.shieldType
+if args.fixed_init:
+    fn = fn + '-fix'
 if args.showTime:
     fn = fn + '-' + timestr
 
@@ -134,82 +127,42 @@ outFolder = os.path.join(args.outFolder, 'car-SAC-image', fn)
 print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
+# endregion
 
-#== Environment ==
+
+# region: == Environment ==
 print("\n== Environment Information ==")
-render = False
 img_sz = 48
-env = NavigationObsPBEnvCont(render=render, img_H=img_sz, img_W=img_sz,
-        doneType=args.doneType)
+task = {}
+task['goal_loc'] = np.array([1.8, -0.5])
+task['goal_radius'] = 0.15
+task['obs_loc'] = np.array([.8, 0])
+task['obs_radius'] = 0.4
+env = NavigationObsPBEnvCont(
+    task=task,
+    img_H=img_sz,
+    img_W=img_sz,
+    num_traj_per_visual_initial_states=1,
+    fixed_init=args.fixed_init,
+    sparse_reward=False,
+    useRGB=True,
+    render=False,
+    doneType='fail'
+)
 env.seed(args.randomSeed)
 
 stateDim = env.state_dim
 actionDim = env.action_dim
 actionLim = env.action_lim
-print("State Dimension: {:d}, Action Dimension: {:d}".format(
-    stateDim, actionDim))
 env.report()
 env.reset()
 
-#== Get and Plot max{l_x, g_x} ==
+#= Plot Env
 if args.plotFigure or args.storeFigure:
-    nx = 101
-    ny = nx
-    vmin = -1
-    vmax = 1
+    fig, ax = plt.subplots(1, 1, figsize=(3, 3), sharex=True, sharey=True)
+    env.plot_target_failure_set(ax)
+    env.plot_formatting(ax, labels=None, fsz=16)
 
-    v = np.zeros((nx, ny))
-    l_x = np.zeros((nx, ny))
-    g_x = np.zeros((nx, ny))
-    xs = np.linspace(env.bounds[0,0], env.bounds[0,1], nx)
-    ys =np.linspace(env.bounds[1,0], env.bounds[1,1], ny)
-
-    it = np.nditer(v, flags=['multi_index'])
-
-    while not it.finished:
-        idx = it.multi_index
-        x = xs[idx[0]]
-        y = ys[idx[1]]
-
-        l_x[idx] = env.target_margin(np.array([x, y]))
-        g_x[idx] = env.safety_margin(np.array([x, y]))
-
-        v[idx] = np.maximum(l_x[idx], g_x[idx])
-        it.iternext()
-
-    axStyle = env.get_axes()
-
-    fig, axes = plt.subplots(1,3, figsize=(12,6))
-
-    ax = axes[0]
-    im = ax.imshow(l_x.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
-    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
-        ticks=[vmin, 0, vmax])
-    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=24)
-    ax.set_title(r'$\ell(x)$', fontsize=18)
-
-    ax = axes[1]
-    im = ax.imshow(g_x.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
-    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
-        ticks=[vmin, 0, vmax])
-    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=24)
-    ax.set_title(r'$g(x)$', fontsize=18)
-
-    ax = axes[2]
-    im = ax.imshow(v.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap="seismic", vmin=vmin, vmax=vmax, zorder=-1)
-    cbar = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.05, shrink=.95,
-        ticks=[vmin, 0, vmax])
-    cbar.ax.set_yticklabels(labels=[vmin, 0, vmax], fontsize=24)
-    ax.set_title(r'$v(x)$', fontsize=18)
-
-    for ax in axes:
-        env.plot_target_failure_set(ax=ax)
-        env.plot_formatting(ax=ax)
-
-    fig.tight_layout()
     if args.storeFigure:
         figurePath = os.path.join(figureFolder, 'env.png')
         fig.savefig(figurePath)
@@ -217,21 +170,17 @@ if args.plotFigure or args.storeFigure:
         plt.show()
         plt.pause(0.001)
     plt.close()
+# endregion
 
 
-#== AGENT ==
+# region: == AGENT ==
 print("\n== Agent Information ==")
-if args.annealing:
-    GAMMA_END = 0.9999
-    GAMMA_PERIOD = updatePeriod
-    LR_Al_PERIOD = int(updatePeriod/10)
-else:
-    GAMMA_END = args.gamma
-    GAMMA_PERIOD = maxUpdates
-    LR_Al_PERIOD = updatePeriod
+GAMMA_END = args.gamma
+GAMMA_PERIOD = maxUpdates
+LR_Al_PERIOD = updatePeriod
 
-MLP_DIM = {'critic':args.dim_critic, 'actor':args.dim_actor}
-ACTIVATION = {'critic':args.actType, 'actor':args.actType}
+MLP_DIM    = {'critic': args.dim_critic, 'actor': args.dim_actor}
+ACTIVATION = {'critic': args.actType,    'actor': args.actType}
 
 CONFIG = TrainingConfig(
     # Environment
@@ -242,8 +191,6 @@ CONFIG = TrainingConfig(
     ACTION_DIM=actionDim,
     OBS_CHANNEL=env.num_img_channel,
     # Agent
-    MODE='safety',
-    TERMINAL_TYPE='max',
     DEVICE=device,
     # Training Setting
     TRAIN_BACKUP=False,
@@ -282,53 +229,52 @@ CONFIG_ARCH = NNConfig(
     MLP_DIM=MLP_DIM,
     ACTIVATION=ACTIVATION
 )
-
 # for key, value in CONFIG.__dict__.items():
 #     if key[:1] != '_': print(key, value)
-agent = SAC_image(CONFIG, CONFIG_ARCH)
+
+agent = PolicyShielding(CONFIG, CONFIG_ARCH, CONFIG_ARCH)
+print('Total parameters in actor: {}'.format(
+    sum(p.numel() for p in agent.actor.parameters() if p.requires_grad) ))
 print("We want to use: {}, and Agent uses: {}".format(device, agent.device))
 print("Critic is using cuda: ", next(agent.critic.parameters()).is_cuda)
 
-if args.warmup:
-    print("\n== Warmup Q ==")
-    lossArray = agent.initQ(env, 20, outFolder, num_warmup_samples=4096,
-        vmin=-1, vmax=1, plotFigure=args.plotFigure, storeFigure=args.storeFigure)
-
-    if args.plotFigure or args.storeFigure:
-        lossList = lossArray.reshape(-1)
-        fig, ax = plt.subplots(1,1, figsize=(4, 4))
-        tmp = np.arange(500, args.warmupIter)
-        ax.plot(tmp, lossList[tmp], 'b-')
-        ax.set_xlabel('Iteration', fontsize=18)
-        ax.set_ylabel('Loss', fontsize=18)
-        plt.tight_layout()
-
-        if args.storeFigure:
-            figurePath = os.path.join(figureFolder, 'initQ_Loss.png')
-            fig.savefig(figurePath)
-        if args.plotFigure:
-            plt.show()
-            plt.pause(0.001)
-        plt.close()
+print("Use pre-trained backup policy:")
+backupFolder = os.path.join(
+    args.outFolder, 'car-SAC-image', '999-safety-fail', 'model')
+agent.restore(200000, backupFolder, 'backup')
+# endregion
 
 
-#== Learning ==
+# region: == Learning ==
 print("\n== Learning ==")
-trainRecords, trainProgress = agent.learn(
-    env, warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
-    warmupQ=False, MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
+shieldDict = {}
+shieldDict['Type'] = args.shieldType
+if shieldDict['Type'] == 'simulator':
+    shieldDict['T_rollout'] = 100
+if shieldDict['Type'] == 'value':
+    shieldDict['Threshold'] = -0.02
+
+trainRecords, trainProgress, violationRecord = agent.learn(
+    env, shieldDict,
+    warmupBuffer=True, warmupBufferRatio=args.warmupBufferRatio,
+    MAX_UPDATES=maxUpdates, MAX_EP_STEPS=args.maxSteps,
+    # MAX_UPDATES=10000, MAX_EP_STEPS=1000,
     MAX_EVAL_EP_STEPS=args.maxEvalSteps,
     optimizeFreq=args.optimize_freq,
     numUpdatePerOptimize=args.num_update_per_optimize,
     vmin=-0.5, vmax=0.5, numRndTraj=100,
     checkPeriod=args.checkPeriod, outFolder=outFolder,
-    plotFigure=args.plotFigure, storeFigure=args.storeFigure,
-    useVis=args.visdom)
-    # , visEnvName=args.outFolder.split('/')[-1])
+    plotFigure=args.plotFigure, storeFigure=args.storeFigure)
+print('The number of safety violations: {:d}/{:d}'.format(
+    violationRecord[-1], len(violationRecord)+1))
+# endregion
 
+
+# region: == Training Result Dictionary ==
 trainDict = {}
 trainDict['trainRecords'] = trainRecords
 trainDict['trainProgress'] = trainProgress
+trainDict['violationRecord'] = violationRecord
 filePath = os.path.join(outFolder, 'train')
 
 if args.plotFigure or args.storeFigure:
@@ -369,13 +315,10 @@ if args.plotFigure or args.storeFigure:
     # successRate = np.amax(trainProgress[:, 0])
     # print('We pick model with success rate-{:.3f}'.format(successRate))
     idx = trainProgress.shape[0]
-    agent.restore(idx*args.checkPeriod, outFolder)
+    performancePolicyFolder = os.path.join(outFolder, 'model', 'performance')
+    agent.restore(idx*args.checkPeriod, performancePolicyFolder, agentType='performance')
     policy = lambda obs, z : agent.actor(obs, z)
-
-    if args.mode == 'safety':
-        rolloutEndType = 'fail'
-    else:
-        rolloutEndType = 'TF'
+    rolloutEndType = 'TF'
 
     nx = args.nx
     ny = nx
@@ -406,10 +349,7 @@ if args.plotFigure or args.storeFigure:
         resultMtx[idx] = result
         it.iternext()
 
-    if args.mode == 'safety':
-        resultVisMtx = (resultMtx == -1)
-    else:
-        resultVisMtx = (resultMtx != 1)
+    resultVisMtx = (resultMtx != 1)
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
     axStyle = env.get_axes()
@@ -455,3 +395,4 @@ if args.plotFigure or args.storeFigure:
     trainDict['actDistMtx'] = actDistMtx
 
 save_obj(trainDict, filePath)
+# endregion

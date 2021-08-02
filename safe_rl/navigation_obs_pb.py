@@ -90,13 +90,13 @@ class NavigationObsPBEnv(gym.Env):
         self.img_W = img_W
         self.useRGB = useRGB
         if useRGB:
-            num_img_channel = 3 # RGB
+            self.num_img_channel = 3 # RGB
         else:
-            num_img_channel = 1 # D only
+            self.num_img_channel = 1 # D only
         self.observation_space = gym.spaces.Box(
             low=np.float32(0.),
             high=np.float32(1.),
-            shape=(num_img_channel, img_H, img_W))
+            shape=(self.num_img_channel, img_H, img_W))
         self.action_lim = np.float32(np.array([1.])) #! action_space is defined in the child class
 
         # Color
@@ -191,13 +191,13 @@ class NavigationObsPBEnv(gym.Env):
 
 
     def reset(self, random_init=True, state_init=None):
-        if random_init:
+        if self.fixed_init:
+            self._state = self.car_init_state
+        elif random_init:
             self._state = self.sample_state(self.sample_inside_obs,
                                             self.sample_inside_tar)
         elif state_init is not None:
             self._state = state_init
-        else:
-            self._state = self.car_init_state
 
         # Reset timer
         self.step_elapsed = 0
@@ -433,7 +433,7 @@ class NavigationObsPBEnv(gym.Env):
         #= `l_x` and `g_x` signal
         l_x = self.target_margin(self._state)
         g_x, boundary_margin = self.safety_margin(self._state, return_boundary=True)
-        fail = g_x >= -self._obs_buffer # prevent bad image at the boundary - small value to buffer
+        fail = (g_x > -self._obs_buffer) # prevent bad image at the boundary - small value to buffer
         success = l_x <= 0
 
         dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
@@ -441,7 +441,7 @@ class NavigationObsPBEnv(gym.Env):
         #= Sparse `reward` - small penalty for wandering around
         if self.sparse_reward:
             reward = -0.01
-            
+
             # Large reward for reaching target
             if dist_to_goal_center < self._goal_radius:
                 reward = 10
@@ -548,6 +548,8 @@ class NavigationObsPBEnv(gym.Env):
         #     self._obs_radius, self._goal_radius))
         print("- v: {:.1f}, w_max: {:.1f}, dt: {:.1f}".format(
             self.v, self.action_lim[0], self.dt))
+        print("Observation shape:")
+        print("({} x {} x {})".format(self.num_img_channel, self.img_W, self.img_H))
 
 
     def get_axes(self):
@@ -828,7 +830,7 @@ class NavigationObsPBEnv(gym.Env):
                 traj, result, minV, _ = self.simulate_one_trajectory(
                     policy, T=T, endType=endType, theta=theta,
                     sample_inside_obs=sample_inside_obs,
-                    sample_inside_tar=sample_inside_tar, 
+                    sample_inside_tar=sample_inside_tar,
                     latent_prior=latent_prior)
                 trajectories.append(traj)
                 results[idx] = result
@@ -838,7 +840,7 @@ class NavigationObsPBEnv(gym.Env):
             minVs = np.empty(shape=(len(states),), dtype=float)
             for idx, state in enumerate(states):
                 traj, result, minV, _ = self.simulate_one_trajectory(
-                    policy, T=T, state=state, endType=endType, 
+                    policy, T=T, state=state, endType=endType,
                     latent_prior=latent_prior)
                 trajectories.append(traj)
                 results[idx] = result
@@ -850,7 +852,7 @@ class NavigationObsPBEnv(gym.Env):
     #== Plotting ==
     def visualize(  self, q_func, policy, rndTraj=False, num_rnd_traj=10,
                     vmin=-1, vmax=1, nx=51, ny=51, cmap='seismic',
-                    labels=None, boolPlot=False, plotV=True, normalize_v=False, 
+                    labels=None, boolPlot=False, plotV=True, normalize_v=False,
                     latent_prior=None):
         """
         visualize
@@ -906,6 +908,7 @@ class NavigationObsPBEnv(gym.Env):
             fig.tight_layout()
 
             ax.set_xlabel(r'$\theta={:.0f}^\circ$'.format(theta*180/np.pi), fontsize=28)
+        return fig
 
 
     def plot_v_values(self, q_func, fig, ax, theta=np.pi/2,
@@ -1029,7 +1032,7 @@ class NavigationObsPBEnv(gym.Env):
             ax (matplotlib.axes.Axes).
             labels (list, optional): x- and y- labels. Defaults to None.
             fsz (int, optional): font size. Defaults to 20.
-        """        
+        """
         axStyle = self.get_axes()
         # ax.plot([0., 0.], [axStyle[0][2], axStyle[0][3]], c='k')
         # ax.plot([axStyle[0][0], axStyle[0][1]], [0., 0.], c='k')

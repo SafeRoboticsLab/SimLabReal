@@ -2,25 +2,40 @@
 # Authors: Kai-Chieh Hsu ( kaichieh@princeton.edu )
 #          Allen Z. Ren (allen.ren@princeton.edu)
 
+# We train a performance policy safely given a backup policy trained in similar
+# environment(s). Here we consider two shielding criteria: (1) using a forward
+# simulator to check if from the new state we can remain safe within T_ro steps
+# and (2) using safety critic values. We check in every T_ch steps. Here the
+# backup policy is a priori. The immediate next step is training the backup and
+# performance policy together.
+
+# We expect to reduce the number of collisions during the training without
+# sacrifizing too much efficiency.
+
 import torch
 from torch.nn.functional import mse_loss
-# from torch.nn.utils import clip_grad_norm_
 from torch.optim import AdamW, Adam
 from torch.optim import lr_scheduler
 
 import numpy as np
-from numpy import array
+from collections import namedtuple
 import matplotlib.pyplot as plt
 import os
+import pickle
 import time
-# import visdom
 
 from .model import SACPiNetwork, SACTwinnedQNetwork
-from .ActorCritic import ActorCritic, Transition
+from .scheduler import StepLRMargin
+from .ReplayMemory import ReplayMemory
+from .utils import soft_update, save_model
 import copy
 
-class SAC_image(ActorCritic):
-    def __init__(self, CONFIG, CONFIG_ARCH, verbose=True):
+Transition = namedtuple('Transition', ['s', 'a', 'r', 's_', 'info'])
+
+
+class PolicyShielding(object):
+    # region: init
+    def __init__(self, CONFIG, CONFIG_PERFORMANCE, CONFIG_BACKUP, verbose=True):
         """
         __init__: initialization.
 
@@ -28,13 +43,43 @@ class SAC_image(ActorCritic):
             CONFIG (Class object): hyper-parameter configuration.
             verbose (bool, optional): print info or not. Defaults to True.
         """
-        super(SAC_image, self).__init__('SAC', CONFIG)
+        self.mode = 'performance'
+        self.CONFIG = CONFIG
+        self.CONFIG_PERFORMANCE = CONFIG_PERFORMANCE
+        self.CONFIG_BACKUP = CONFIG_BACKUP
+        self.saved = False
+        self.memory = ReplayMemory(CONFIG.MEMORY_CAPACITY)
 
         #== ENV PARAM ==
         self.obsChannel = CONFIG.OBS_CHANNEL
         self.actionMag = CONFIG.ACTION_MAG
         self.actionDim = CONFIG.ACTION_DIM
         self.img_sz = CONFIG.IMG_SZ
+
+        #== PARAM ==
+        #= Learning
+        self.BATCH_SIZE = CONFIG.BATCH_SIZE
+        self.MAX_MODEL = CONFIG.MAX_MODEL
+        self.device = CONFIG.DEVICE
+        self.TAU = CONFIG.TAU  #= Target Network Update
+        self.train_backup = CONFIG.TRAIN_BACKUP
+
+        #= Discount Factor
+        self.GammaScheduler = StepLRMargin( initValue=CONFIG.GAMMA,
+            period=CONFIG.GAMMA_PERIOD, decay=CONFIG.GAMMA_DECAY,
+            endValue=CONFIG.GAMMA_END, goalValue=1.)
+        self.GAMMA = self.GammaScheduler.get_variable()
+        self.GAMMA_PERIOD = CONFIG.GAMMA_PERIOD
+
+        #= Learning Rate
+        self.LR_C = CONFIG.LR_C
+        self.LR_C_PERIOD = CONFIG.LR_C_PERIOD
+        self.LR_C_DECAY = CONFIG.LR_C_DECAY
+        self.LR_C_END = CONFIG.LR_C_END
+        self.LR_A = CONFIG.LR_A
+        self.LR_A_PERIOD = CONFIG.LR_A_PERIOD
+        self.LR_A_DECAY = CONFIG.LR_A_DECAY
+        self.LR_A_END = CONFIG.LR_A_END
 
         #= alpha-related hyper-parameters
         self.init_alpha = CONFIG.ALPHA
@@ -45,31 +90,18 @@ class SAC_image(ActorCritic):
         self.LR_Al_PERIOD = CONFIG.LR_Al_PERIOD
         self.LR_Al_DECAY = CONFIG.LR_Al_DECAY
         self.LR_Al_END = CONFIG.LR_Al_END
-        self.GAMMA_PERIOD = CONFIG.GAMMA_PERIOD
         if self.LEARN_ALPHA:
             print("SAC with learnable alpha and target entropy = {:.1e}".format(
                 self.target_entropy))
         else:
             print("SAC with fixed alpha = {:.1e}".format(self.init_alpha))
 
-        #= reach-avoid setting
-        self.mode = CONFIG.MODE
-        self.terminalType = CONFIG.TERMINAL_TYPE
-
         #= critic/actor-related hyper-parameters
-        # self.mlp_dim_actor = CONFIG.MLP_DIM['actor']
-        # self.mlp_dim_critic = CONFIG.MLP_DIM['critic']
-        # self.img_sz = CONFIG.IMG_SZ
-        # self.kernel_sz = CONFIG.KERNEL_SIZE
-        # self.n_channel = CONFIG.N_CHANNEL
-        # self.use_ln = CONFIG.USE_LN
-        # self.use_sm = CONFIG.USE_SM
-        # self.activation_actor = CONFIG.ACTIVATION['actor']
-        # self.activation_critic = CONFIG.ACTIVATION['critic']
-        self.build_network(CONFIG_ARCH, verbose=verbose)
+        self.build_perforance_policy(CONFIG_PERFORMANCE, verbose=verbose)
+        self.build_backup_policy(CONFIG_BACKUP, verbose=False)
 
 
-    def build_network(self, CONFIG, verbose=True):
+    def build_perforance_policy(self, CONFIG, verbose=True):
         self.critic = SACTwinnedQNetwork(
             input_n_channel=self.obsChannel,
             img_sz=self.img_sz,
@@ -112,7 +144,66 @@ class SAC_image(ActorCritic):
         self.reset_alpha()
 
 
+    def build_backup_policy(self, CONFIG, verbose=True):
+        self.critic_backup = SACTwinnedQNetwork(
+            input_n_channel=self.obsChannel,
+            img_sz=self.img_sz,
+            actionDim=self.actionDim,
+            mlp_dim=CONFIG.MLP_DIM['critic'],
+            actType=CONFIG.ACTIVATION['critic'],
+            kernel_sz=CONFIG.KERNEL_SIZE,
+            n_channel=CONFIG.N_CHANNEL,
+            use_sm=CONFIG.USE_SM,
+            use_ln=CONFIG.USE_LN,
+            device=self.device,
+            verbose=verbose
+        )
+        if self.train_backup:
+            self.criticTarget_backup = copy.deepcopy(self.critic_backup)
+
+        if verbose:
+            print("\nThe actor shares the same encoder with the critic.")
+        self.actor_backup = SACPiNetwork(
+            input_n_channel=self.obsChannel,
+            img_sz=self.img_sz,
+            actionDim=self.actionDim,
+            actionMag=self.actionMag,
+            mlp_dim=CONFIG.MLP_DIM['actor'],
+            actType=CONFIG.ACTIVATION['actor'],
+            kernel_sz=CONFIG.KERNEL_SIZE,
+            n_channel=CONFIG.N_CHANNEL,
+            use_sm=CONFIG.USE_SM,
+            use_ln=CONFIG.USE_LN,
+            device=self.device,
+            verbose=verbose
+        )
+
+        # Tie weights for conv layers
+        self.actor_backup.encoder.copy_conv_weights_from(self.critic_backup.encoder)
+
+
+    def build_optimizer(self):
+        self.criticOptimizer = Adam(self.critic.parameters(), lr=self.LR_C)
+        self.actorOptimizer = Adam(self.actor.parameters(), lr=self.LR_A)
+
+        self.criticScheduler = lr_scheduler.StepLR(self.criticOptimizer,
+            step_size=self.LR_C_PERIOD, gamma=self.LR_C_DECAY)
+        self.actorScheduler = lr_scheduler.StepLR(self.actorOptimizer,
+            step_size=self.LR_A_PERIOD, gamma=self.LR_A_DECAY)
+
+        if self.LEARN_ALPHA:
+            self.log_alpha.requires_grad = True
+            self.log_alphaOptimizer = Adam([self.log_alpha], lr=self.LR_Al)
+            self.log_alphaScheduler = lr_scheduler.StepLR(
+                self.log_alphaOptimizer,
+                step_size=self.LR_Al_PERIOD, gamma=self.LR_Al_DECAY)
+
+        self.max_grad_norm = .1
+        self.cntUpdate = 0
+
+
     def reset_alpha(self):
+        # print("Reset alpha")
         self.log_alpha = torch.tensor(np.log(self.init_alpha)).to(self.device)
         self.log_alpha.requires_grad = True
         self.log_alphaOptimizer = Adam([self.log_alpha], lr=self.LR_Al)
@@ -123,9 +214,11 @@ class SAC_image(ActorCritic):
     @property
     def alpha(self):
         return self.log_alpha.exp()
+    # endregion
 
 
-    def initBuffer(self, env, ratio=1.0):
+    # region: learning-related
+    def initBuffer(self, env, ratio=1.):
         cnt = 0
         s = env.reset()
         while len(self.memory) < self.memory.capacity * ratio:
@@ -143,50 +236,23 @@ class SAC_image(ActorCritic):
         print(" --- Warmup Buffer Ends")
 
 
-    def initQ(self, env, warmupIter, outFolder, num_warmup_samples=200,
-                vmin=-1, vmax=1, plotFigure=True, storeFigure=True):
-        loss = 0.0
-        lossList = np.empty(warmupIter, dtype=float)
-        for ep_tmp in range(warmupIter):
-            states, value = env.get_warmup_examples(num_warmup_samples)
-            actions = self.genRandomActions(num_warmup_samples)
+    def update_critic_hyperParam(self):
+        if self.criticOptimizer.state_dict()['param_groups'][0]['lr'] <= self.LR_C_END:
+            for param_group in self.criticOptimizer.param_groups:
+                param_group['lr'] = self.LR_C_END
+        else:
+            self.criticScheduler.step()
 
-            self.critic.train()
-            value = torch.from_numpy(value).float().to(self.device)
-            stateTensor = torch.from_numpy(states).float().to(self.device)
-            actionTensor = torch.from_numpy(actions).float().to(self.device)
-            q1, q2 = self.critic(stateTensor, actionTensor)
-            q1Loss = mse_loss(input=q1, target=value, reduction='sum')
-            q2Loss = mse_loss(input=q2, target=value, reduction='sum')
-            loss = q1Loss + q2Loss
+        self.GammaScheduler.step()
+        self.GAMMA = self.GammaScheduler.get_variable()
 
-            self.criticOptimizer.zero_grad()
-            loss.backward()
-            self.criticOptimizer.step()
 
-            lossList[ep_tmp] = loss.detach().cpu().numpy()
-            print('\rWarmup Q [{:d}]. MSE = {:f}'.format(
-                ep_tmp+1, loss.detach()), end='')
-
-        print(" --- Warmup Q Ends")
-        if plotFigure or storeFigure:
-            env.visualize(self.critic.Q1, self.actor, vmin=vmin, vmax=vmax)
-            if storeFigure:
-                figureFolder = os.path.join(outFolder, 'figure')
-                os.makedirs(figureFolder, exist_ok=True)
-                figurePath = os.path.join(figureFolder, 'initQ.png')
-                plt.savefig(figurePath)
-            if plotFigure:
-                plt.show()
-                plt.pause(0.001)
-                plt.close()
-
-        # hard replace
-        self.criticTarget.load_state_dict(self.critic.state_dict())
-        del self.criticOptimizer
-        self.build_optimizer(verbose=False)
-
-        return lossList
+    def update_actor_hyperParam(self):
+        if self.actorOptimizer.state_dict()['param_groups'][0]['lr'] <= self.LR_A_END:
+            for param_group in self.actorOptimizer.param_groups:
+                param_group['lr'] = self.LR_A_END
+        else:
+            self.actorScheduler.step()
 
 
     def update_alpha_hyperParam(self):
@@ -205,8 +271,11 @@ class SAC_image(ActorCritic):
             self.update_alpha_hyperParam()
 
 
-    def update_critic(self, batch):
+    def update_target_networks(self):
+        soft_update(self.criticTarget, self.critic, self.TAU)
 
+
+    def update_critic(self, batch):
         non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x = \
             self.unpack_batch(batch)
         self.critic.train()
@@ -274,7 +343,6 @@ class SAC_image(ActorCritic):
         """
         Use detach_encoder=True to not update conv layers
         """
-
         _, _, state, _, _, _, _ = self.unpack_batch(batch)
 
         self.critic.eval()
@@ -311,9 +379,6 @@ class SAC_image(ActorCritic):
 
 
     def update(self, timer, update_period=2):
-        # if len(self.memory) < self.start_updates:
-        #     return 0.0, 0.0, 0.0, 0.0
-
         #== EXPERIENCE REPLAY ==
         transitions = self.memory.sample(self.BATCH_SIZE)
         batch = Transition(*zip(*transitions))
@@ -327,7 +392,6 @@ class SAC_image(ActorCritic):
             loss_pi, loss_entropy, loss_alpha = self.update_actor(batch)
             print('\r{:d}: (q, pi, ent, alpha) = ({:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}).'.format(
                 self.cntUpdate, loss_q, loss_pi, loss_entropy, loss_alpha), end=' ')
-
             self.update_target_networks()
 
         self.critic.eval()
@@ -336,40 +400,28 @@ class SAC_image(ActorCritic):
         return loss_q, loss_pi, loss_entropy, loss_alpha
 
 
-    def learn(  self, env, MAX_UPDATES=2000000, MAX_EP_STEPS=50,
-                MAX_EVAL_EP_STEPS=100,
+    def performanceStateValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.actor(obsTensor).detach()
+        v = self.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
+    def backupStateValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.actor_backup(obsTensor).detach()
+        v = self.critic_backup(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
+    def learn(  self, env, shieldDict,
+                MAX_UPDATES=200000, MAX_EP_STEPS=100, MAX_EVAL_EP_STEPS=100,
                 warmupBuffer=True, warmupBufferRatio=1.0,
-                warmupQ=False, warmupIter=10000,
-                optimizeFreq=100, numUpdatePerOptimize=128,
-                curUpdates=None, checkPeriod=50000,
+                optimizeFreq=100, numUpdatePerOptimize=100,
+                curUpdates=None, checkPeriod=10000,
                 plotFigure=True, storeFigure=False,
-                showBool=False, vmin=-1, vmax=1, numRndTraj=200,
-                storeModel=True, saveBest=False, outFolder='RA',
-                useVis=False, verbose=True):
-
-        if useVis:
-            import visdom
-            vis = visdom.Visdom(env='test_sac_6', port=8098)
-            q_loss_window = vis.line(
-                X=array([[0]]),
-                Y=array([[0]]),
-                opts=dict(xlabel='epoch', title='Q Loss'))
-            pi_loss_window = vis.line(
-                X=array([[0]]),
-                Y=array([[0]]),
-                opts=dict(xlabel='epoch', title='Pi Loss'))
-            entropy_window = vis.line(
-                X=array([[0]]),
-                Y=array([[0]]),
-                opts=dict(xlabel='epoch', title='Entropy'))
-            success_window = vis.line(
-                X=array([[0]]),
-                Y=array([[0]]),
-                opts=dict(xlabel='epoch', title='Success'))
-
-        # == Build up networks
-        # self.build_network(verbose=verbose)
-        # print("Critic is using cuda: ", next(self.critic.parameters()).is_cuda)
+                showBool=False, vmin=-1, vmax=1, numRndTraj=100,
+                storeModel=True, saveBest=False, outFolder='RA', verbose=True):
 
         # == Warmup Buffer ==
         startInitBuffer = time.time()
@@ -377,20 +429,14 @@ class SAC_image(ActorCritic):
             self.initBuffer(env, ratio=warmupBufferRatio)
         endInitBuffer = time.time()
 
-        # == Warmup Q ==
-        startInitQ = time.time()
-        if warmupQ:
-            self.initQ(env, warmupIter=warmupIter, outFolder=outFolder,
-                vmin=vmin, vmax=vmax, plotFigure=plotFigure,
-                storeFigure=storeFigure)
-        endInitQ = time.time()
-
         # == Main Training ==
         startLearning = time.time()
-        trainingRecords = []
+        trainRecords = []
         trainProgress = []
+        violationRecord = []
         checkPointSucc = 0.
         ep = 0
+        safetyViolationCnt = 0
 
         if storeModel:
             modelFolder = os.path.join(outFolder, 'model')
@@ -413,17 +459,38 @@ class SAC_image(ActorCritic):
             s = env.reset()
             epCost = np.inf
             ep += 1
+            print('\n[{}]: '.format(ep))
+            print(env._state)
 
             # Rollout
-            for _ in range(MAX_EP_STEPS):
+            for t in range(MAX_EP_STEPS):
                 # Select action
-                # if warmupBuffer or self.cntUpdate > max(warmupIter, self.start_updates):
                 with torch.no_grad():
                     a, _ = self.actor.sample(
                         torch.from_numpy(s).float().to(self.device))
                     a = a.view(-1).cpu().numpy()
-                # else:
-                    # a = env.action_space.sample()
+
+                # Check Safety
+                # ? Check if correct
+                shieldType = shieldDict['Type']
+                if shieldType == 'none':
+                    pass
+                else:
+                    w = env.getTurningRate(a)
+                    _state = env.integrate_forward(env._state, w)
+                    obs = env._get_obs(_state)
+
+                    if shieldType == 'value':
+                        safetyValue = self.backupStateValue(obs)
+                        shieldFlag = (safetyValue > shieldDict['Threshold'])
+                    elif shieldType == 'simulator':
+                        T_ro = shieldDict['T_rollout']
+                        _, result, _, _ = env.simulate_one_trajectory(self.actor_backup,
+                            T=T_ro, endType='fail', state=_state, latent_prior=None)
+                        shieldFlag = (result == -1)
+
+                    if shieldFlag:
+                        a = self.actor_backup(s)
 
                 # Interact with env
                 s_, r, done, info = env.step(a)
@@ -439,15 +506,10 @@ class SAC_image(ActorCritic):
                     self.actor.eval()
                     self.critic.eval()
                     policy = self.actor  # mean only and no std
-                    def q_func(obs):
-                        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
-                        u = self.actor(obsTensor).detach()
-                        v = self.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-                        return v
 
                     results = env.simulate_trajectories(policy,
-                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj, 
-                        endType=endType, sample_inside_obs=False, 
+                        T=MAX_EVAL_EP_STEPS, num_rnd_traj=numRndTraj,
+                        endType=endType, sample_inside_obs=False,
                         sample_inside_tar=False)[1]
                     if self.mode == 'safety':
                         failure  = np.sum(results==-1)/ results.shape[0]
@@ -458,11 +520,6 @@ class SAC_image(ActorCritic):
                         failure  = np.sum(results==-1)/ results.shape[0]
                         unfinish = np.sum(results==0) / results.shape[0]
                         trainProgress.append([success, failure, unfinish])
-
-                    if useVis:
-                        vis.line(X=array([[self.cntUpdate]]),
-                                    Y=array([[success]]),
-                                win=success_window,update='append')
 
                     if verbose:
                         lr = self.actorOptimizer.state_dict()['param_groups'][0]['lr']
@@ -484,17 +541,15 @@ class SAC_image(ActorCritic):
                                 checkPointSucc = success
                                 self.save(self.cntUpdate, modelFolder)
                         else:
-                            self.save(self.cntUpdate, modelFolder)
+                            self.save(self.cntUpdate, modelFolder, agentType='performance')
 
                     if plotFigure or storeFigure:
-                        # TODO:
-                        # fix plot_v error when using critic in RA;
-                        # not using it for training performance policy right now
                         if showBool:
-                            env.visualize(q_func, policy, vmin=0, boolPlot=True)
+                            env.visualize(self.performanceStateValue, policy,
+                                vmin=0, boolPlot=True)
                         else:
-                            env.visualize(q_func, policy,
-                                vmin=vmin, vmax=vmax, cmap='seismic')
+                            env.visualize(self.performanceStateValue, policy,
+                                vmin=vmin, vmax=vmax, cmap='seismic', normalize_v=True)
 
                         if storeFigure:
                             figurePath = os.path.join(figureFolder,
@@ -511,18 +566,7 @@ class SAC_image(ActorCritic):
                 if self.cntUpdate % optimizeFreq == 0:
                     for timer in range(numUpdatePerOptimize):
                         loss_q, loss_pi, loss_entropy, loss_alpha = self.update(timer)
-                        trainingRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha])
-
-                        if timer == 0 and useVis:
-                            vis.line(X=array([[self.cntUpdate]]),
-                                        Y=array([[loss_q]]),
-                                    win=q_loss_window,update='append')
-                            vis.line(X=array([[self.cntUpdate]]),
-                                        Y=array([[loss_pi]]),
-                                    win=pi_loss_window,update='append')
-                            vis.line(X=array([[self.cntUpdate]]),
-                                        Y=array([[loss_entropy]]),
-                                    win=entropy_window,update='append')
+                        trainRecords.append([loss_q, loss_pi, loss_entropy, loss_alpha])
 
                 self.cntUpdate += 1
 
@@ -533,16 +577,102 @@ class SAC_image(ActorCritic):
 
                 # Terminate early
                 if done:
+                    # g_x = env.safety_margin(env._state, return_boundary=False)
+                    # if g_x > 0:
+                    safetyViolationCnt += 1
+                    violationRecord.append(safetyViolationCnt)
                     break
+                if t == (MAX_EP_STEPS-1):
+                    violationRecord.append(safetyViolationCnt)
 
         endLearning = time.time()
         timeInitBuffer = endInitBuffer - startInitBuffer
-        timeInitQ = endInitQ - startInitQ
         timeLearning = endLearning - startLearning
-        self.save(self.cntUpdate, '{:s}/model/'.format(outFolder))
-        print('\nInitBuffer: {:.1f}, InitQ: {:.1f}, Learning: {:.1f}'.format(
-            timeInitBuffer, timeInitQ, timeLearning))
+        self.save(self.cntUpdate, modelFolder, agentType='performance')
+        print('\nInitBuffer: {:.1f}, Learning: {:.1f}'.format(
+            timeInitBuffer, timeLearning))
 
-        trainingRecords = np.array(trainingRecords)
+        trainRecords = np.array(trainRecords)
         trainProgress = np.array(trainProgress)
-        return trainingRecords, trainProgress
+        return trainRecords, trainProgress, violationRecord
+    # endregion
+
+
+    # region: some utils functions
+    def store_transition(self, *args):
+        self.memory.update(Transition(*args))
+
+
+    def save(self, step, logs_path, agentType):
+        logs_path_critic = os.path.join(logs_path, agentType, 'critic')
+        logs_path_actor = os.path.join(logs_path, agentType, 'actor')
+        if agentType == 'backup':
+            save_model(self.critic_backup, step, logs_path_critic, 'critic', self.MAX_MODEL)
+            save_model(self.actor_backup,  step, logs_path_actor, 'actor',  self.MAX_MODEL)
+        elif agentType == 'performance':
+            save_model(self.critic, step, logs_path_critic, 'critic', self.MAX_MODEL)
+            save_model(self.actor,  step, logs_path_actor, 'actor',  self.MAX_MODEL)
+        if not self.saved:
+            config_path = os.path.join(logs_path, "CONFIG.pkl")
+            pickle.dump(self.CONFIG, open(config_path, "wb"))
+            config_path = os.path.join(logs_path, "CONFIG_PERFORMANCE.pkl")
+            pickle.dump(self.CONFIG_PERFORMANCE, open(config_path, "wb"))
+            config_path = os.path.join(logs_path, "CONFIG_BACKUP.pkl")
+            pickle.dump(self.CONFIG_BACKUP, open(config_path, "wb"))
+            self.saved = True
+
+
+    def restore(self, step, logs_path, agentType):
+        """
+        restore
+
+        Args:
+            step (int): #updates trained.
+            logs_path (str): the path of the directory, under this folder there should
+                be critic/ and agent/ folders.
+            agentType (str): performance policy or backup policy.
+        """
+        logs_path_critic = os.path.join(
+            logs_path, 'critic', 'critic-{}.pth'.format(step))
+        logs_path_actor  = os.path.join(
+            logs_path, 'actor',  'actor-{}.pth'.format(step))
+        if agentType == 'backup':
+            self.critic_backup.load_state_dict(
+                torch.load(logs_path_critic, map_location=self.device))
+            self.critic_backup.to(self.device)
+            if self.train_backup:
+                self.criticTarget_backup.load_state_dict(
+                    torch.load(logs_path_critic, map_location=self.device))
+                self.criticTarget_backup.to(self.device)
+            self.actor_backup.load_state_dict(
+                torch.load(logs_path_actor, map_location=self.device))
+            self.actor_backup.to(self.device)
+        elif agentType == 'performance':
+            self.critic.load_state_dict(
+                torch.load(logs_path_critic, map_location=self.device))
+            self.critic.to(self.device)
+            self.criticTarget.load_state_dict(
+                torch.load(logs_path_critic, map_location=self.device))
+            self.criticTarget.to(self.device)
+            self.actor.load_state_dict(
+                torch.load(logs_path_actor, map_location=self.device))
+            self.actor.to(self.device)
+        print('  <= Restore {}-{}' .format(logs_path, step))
+
+
+    def unpack_batch(self, batch):
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.s_)),
+            dtype=torch.bool).to(self.device)
+        non_final_state_nxt = torch.FloatTensor([
+            s for s in batch.s_ if s is not None]).to(self.device)
+        state  = torch.FloatTensor(batch.s).to(self.device)
+        action = torch.FloatTensor(batch.a).to(self.device).view(-1, self.actionDim)
+        reward = torch.FloatTensor(batch.r).to(self.device)
+
+        g_x = torch.FloatTensor(
+            [info['g_x'] for info in batch.info]).to(self.device).view(-1)
+        l_x = torch.FloatTensor(
+            [info['l_x'] for info in batch.info]).to(self.device).view(-1)
+
+        return non_final_mask, non_final_state_nxt, state, action, reward, g_x, l_x
+    # endregion

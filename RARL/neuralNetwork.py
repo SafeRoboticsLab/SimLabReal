@@ -30,6 +30,7 @@ class Sin(nn.Module):
 
 activationDict =  nn.ModuleDict({
     "ReLU": nn.ReLU(),
+    "ELU": nn.ELU(),
     "Tanh": nn.Tanh(),
     "Sin": Sin(),
     "Identity": nn.Identity()
@@ -40,7 +41,8 @@ class MLP(nn.Module):
     model: Constructs a fully-connected neural network with flexible depth, width
         and activation function choices.
     """
-    def __init__(self, dimList, actType='Tanh', output_activation=nn.Identity, verbose=False):
+    def __init__(self, dimList, actType='Tanh', outActType='Identity',
+            use_ln=False, verbose=False):
         """
         __init__: Initalizes.
 
@@ -60,18 +62,34 @@ class MLP(nn.Module):
             i_dim = dimList[idx]
             o_dim = dimList[idx+1]
 
-            self.moduleList.append(nn.Linear(in_features=i_dim, out_features=o_dim))
-            if idx == numLayer-1: # final linear layer, no act.
-                self.moduleList.append(output_activation())
-            else:
-                if actType == 'Sin':
-                    self.moduleList.append(Sin())
-                elif actType == 'Tanh':
-                    self.moduleList.append(nn.Tanh())
-                elif actType == 'ReLU':
-                    self.moduleList.append(nn.ReLU())
+            # self.moduleList.append(nn.Linear(in_features=i_dim, out_features=o_dim))
+            if idx == 0:
+                if use_ln:
+                    module = nn.Sequential( OrderedDict([
+                        ('linear_1',    nn.Linear(i_dim, o_dim)),
+                        ('norm_1',      nn.LayerNorm(o_dim)),
+                        ('tanh_1',      activationDict['Tanh']),
+                        ('act_1',       activationDict[actType]),
+                    ]))
+                    self.moduleList.append(module)
                 else:
-                    raise ValueError('Activation type ({:s}) is not included!'.format(actType))
+                    module = nn.Sequential( OrderedDict([
+                        ('linear_1',    nn.Linear(i_dim, o_dim)),
+                        ('act_1',       activationDict[actType]),
+                    ]))
+                    self.moduleList.append(module)
+            elif idx == numLayer-1:
+                module = nn.Sequential( OrderedDict([
+                    ('linear_1',    nn.Linear(i_dim, o_dim)),
+                    ('act_1',       activationDict[outActType]),
+                ]))
+                self.moduleList.append(module)
+            else:
+                module = nn.Sequential( OrderedDict([
+                    ('linear_1',    nn.Linear(i_dim, o_dim)),
+                    ('act_1',       activationDict[actType]),
+                ]))
+                self.moduleList.append(module)
                 # self.moduleList.append(nn.Dropout(p=.5))
         if verbose:
             print(self.moduleList)
