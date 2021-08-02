@@ -23,7 +23,6 @@ Transition = namedtuple('Transition', ['s', 'a', 'r', 's_', 'info'])
 
 
 class PolicyShieldingJoint(object):
-    # region: init
     def __init__(self, CONFIG, CONFIG_PERFORMANCE, CONFIG_BACKUP, verbose=True):
         """
         __init__: initialization.
@@ -59,20 +58,6 @@ class PolicyShieldingJoint(object):
             period=CONFIG.RHO_PERIOD, decay=CONFIG.RHO_DECAY,
             endValue=CONFIG.RHO_END)
         self.RHO = self.RhoScheduler.get_variable()
-
-
-    def performanceValue(self, obs):
-        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
-        u = self.performance.actor(obsTensor).detach()
-        v = self.performance.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-        return v
-
-
-    def backupValue(self, obs):
-        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
-        u = self.backup.actor(obsTensor).detach()
-        v = self.backup.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-        return v
 
 
     def initBuffer(self, env, ratio=1.0):
@@ -257,9 +242,9 @@ class PolicyShieldingJoint(object):
 
                 # Terminate early
                 if done:
-                    # g_x = env.safety_margin(env._state, return_boundary=False)
-                    # if g_x > 0:
-                    cntSafetyViolation += 1
+                    g_x = env.safety_margin(env._state, return_boundary=False)
+                    if g_x > 0:
+                        cntSafetyViolation += 1
                     violationRecord.append(cntSafetyViolation)
                     break
                 if t == (MAX_EP_STEPS-1):
@@ -267,7 +252,7 @@ class PolicyShieldingJoint(object):
 
             # Update epsilon, rho
             print('  - This episode has {} steps'.format(t))
-            print('  - Safety violations: {:d}'.format(cntSafetyViolation))
+            print('  - Safety violations so far: {:d}'.format(cntSafetyViolation))
             print('  - eps={:.2f}, rho={:.2f}'.format(self.EPS, self.RHO))
             self.EpsilonScheduler.step()
             self.EPS = self.EpsilonScheduler.get_variable()
@@ -284,10 +269,23 @@ class PolicyShieldingJoint(object):
         trainProgress[0] = np.stack( trainProgress[0], axis=0 )
         trainProgress[1] = np.stack( trainProgress[1], axis=0 )
         return trainRecords, trainProgress, violationRecord
-    # endregion
 
 
     # region: some utils functions
+    def performanceValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.performance.actor(obsTensor).detach()
+        v = self.performance.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
+    def backupValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.backup.actor(obsTensor).detach()
+        v = self.backup.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
     def store_transition(self, *args):
         self.memory.update(Transition(*args))
 

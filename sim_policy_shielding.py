@@ -4,7 +4,7 @@
 
 # Examples:
     # RA: python3 sim_policy_shielding.py -sf -of scratch -n 999 -mc 50000
-    # python3 sim_policy_shielding.py -sf -lal -ln -of scratch -mu 200 -cp 100 -ut 10 -nx 11 -mc 1000 -n tmp
+    # python3 sim_policy_shielding.py -sf -lal -ln -of scratch -mu 200 -cp 100 -ut 10 -mc 1000 -n tmp
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -32,8 +32,6 @@ from safe_rl.navigation_obs_pb_cont import NavigationObsPBEnvCont
 parser = argparse.ArgumentParser()
 
 # environment parameters
-# parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
-#     default='fail', type=str)
 parser.add_argument("-rnd", "--randomSeed",     help="random seed",
     default=0,      type=int)
 parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
@@ -51,7 +49,7 @@ parser.add_argument("-mu",  "--maxUpdates",         help="maximal #gradient upda
 parser.add_argument("-ut",  "--updateTimes",        help="hyper-param. update times",
     default=20,     type=int)
 parser.add_argument("-mc",  "--memoryCapacity",     help="memoryCapacity",
-    default=50000,  type=int)
+    default=20000,  type=int)
 parser.add_argument("-cp",  "--checkPeriod",        help="check period",
     default=10000,  type=int)
 parser.add_argument("-bs",  "--batchSize",          help="batch size",
@@ -90,8 +88,8 @@ parser.add_argument("-act", "--actType",        help="activation type",
     default='ReLU', type=str)
 
 # file
-parser.add_argument("-nx",  "--nx",             help="check period",
-    default=101, type=int)
+# parser.add_argument("-nx",  "--nx",             help="check period",
+#     default=101, type=int)
 parser.add_argument("-st",  "--showTime",       help="show timestr",
     action="store_true")
 parser.add_argument("-n",   "--name",           help="extra name",
@@ -117,13 +115,13 @@ maxUpdates = args.maxUpdates
 updateTimes = args.updateTimes
 updatePeriod = int(maxUpdates / updateTimes)
 
-fn = args.name + '-shield_by_' + args.shieldType
+fn = args.name + '-' + args.shieldType
 if args.fixed_init:
     fn = fn + '-fix'
 if args.showTime:
     fn = fn + '-' + timestr
 
-outFolder = os.path.join(args.outFolder, 'car-SAC-image', fn)
+outFolder = os.path.join(args.outFolder, 'car-shield', fn)
 print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
@@ -133,13 +131,7 @@ os.makedirs(figureFolder, exist_ok=True)
 # region: == Environment ==
 print("\n== Environment Information ==")
 img_sz = 48
-task = {}
-task['goal_loc'] = np.array([1.8, -0.5])
-task['goal_radius'] = 0.15
-task['obs_loc'] = np.array([.8, 0])
-task['obs_radius'] = 0.4
 env = NavigationObsPBEnvCont(
-    task=task,
     img_H=img_sz,
     img_W=img_sz,
     num_traj_per_visual_initial_states=1,
@@ -266,7 +258,7 @@ trainRecords, trainProgress, violationRecord = agent.learn(
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
 print('The number of safety violations: {:d}/{:d}'.format(
-    violationRecord[-1], len(violationRecord)+1))
+    violationRecord[-1], len(violationRecord)))
 # endregion
 
 
@@ -281,7 +273,7 @@ if args.plotFigure or args.storeFigure:
     # region: loss
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
 
-    data = trainRecords
+    data = trainRecords[:, 0]
     ax = axes[0]
     ax.plot(data, 'b:')
     ax.set_xlabel('Iteration (x 1e5)', fontsize=18)
@@ -314,85 +306,86 @@ if args.plotFigure or args.storeFigure:
     # idx = np.argmax(trainProgress[:, 0]) + 1
     # successRate = np.amax(trainProgress[:, 0])
     # print('We pick model with success rate-{:.3f}'.format(successRate))
-    idx = trainProgress.shape[0]
-    performancePolicyFolder = os.path.join(outFolder, 'model', 'performance')
-    agent.restore(idx*args.checkPeriod, performancePolicyFolder, agentType='performance')
-    policy = lambda obs, z : agent.actor(obs, z)
-    rolloutEndType = 'TF'
+    # idx = trainProgress.shape[0]
+    # performancePolicyFolder = os.path.join(outFolder, 'model', 'performance')
+    # agent.restore(idx*args.checkPeriod, performancePolicyFolder, agentType='performance')
+    # policy = lambda obs, z : agent.actor(obs, z)
+    # rolloutEndType = 'TF'
 
-    nx = args.nx
-    ny = nx
-    xs = np.linspace(env.bounds[0,0], env.bounds[0,1], nx)
-    ys = np.linspace(env.bounds[1,0], env.bounds[1,1], ny)
+    # nx = args.nx
+    # ny = nx
+    # xs = np.linspace(env.bounds[0,0], env.bounds[0,1], nx)
+    # ys = np.linspace(env.bounds[1,0], env.bounds[1,1], ny)
 
-    resultMtx  = np.empty((nx, ny), dtype=int)
-    actDistMtx = np.empty((nx, ny), dtype=float)
-    valueMtx = np.empty((nx, ny), dtype=float)
-    it = np.nditer(resultMtx, flags=['multi_index'])
+    # resultMtx  = np.empty((nx, ny), dtype=int)
+    # actDistMtx = np.empty((nx, ny), dtype=float)
+    # valueMtx = np.empty((nx, ny), dtype=float)
+    # it = np.nditer(resultMtx, flags=['multi_index'])
 
-    while not it.finished:
-        idx = it.multi_index
-        print(idx, end='\r')
-        x = xs[idx[0]]
-        y = ys[idx[1]]
+    # while not it.finished:
+    #     idx = it.multi_index
+    #     print(idx, end='\r')
+    #     x = xs[idx[0]]
+    #     y = ys[idx[1]]
 
-        state = np.array([x, y, 0.])
-        obs = env._get_obs(state)
-        obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
-        u = agent.actor(obsTensor).detach()
-        v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-        actDistMtx[idx] = u.cpu().numpy()[0]
-        valueMtx[idx] = v
+    #     state = np.array([x, y, 0.])
+    #     obs = env._get_obs(state)
+    #     obsTensor = torch.FloatTensor(obs).to(agent.device).unsqueeze(0)
+    #     u = agent.actor(obsTensor).detach()
+    #     v = agent.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+    #     actDistMtx[idx] = u.cpu().numpy()[0]
+    #     valueMtx[idx] = v
 
-        _, result, _, _ = env.simulate_one_trajectory(
-            policy, T=args.maxEvalSteps, state=state, endType=rolloutEndType)
-        resultMtx[idx] = result
-        it.iternext()
+    #     _, result, _, _ = env.simulate_one_trajectory(
+    #         policy, T=args.maxEvalSteps, state=state, endType=rolloutEndType)
+    #     resultMtx[idx] = result
+    #     it.iternext()
 
-    resultVisMtx = (resultMtx != 1)
+    # resultVisMtx = (resultMtx != 1)
 
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
-    axStyle = env.get_axes()
+    # fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
+    # axStyle = env.get_axes()
 
-    #= Action
-    ax = axes[2]
-    im = ax.imshow(actDistMtx.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=-actionLim, vmax=actionLim, zorder=-1)
-    ax.set_xlabel('Action', fontsize=24)
+    # #= Action
+    # ax = axes[2]
+    # im = ax.imshow(actDistMtx.T, interpolation='none', extent=axStyle[0],
+    #     origin="lower", cmap='seismic', vmin=-actionLim, vmax=actionLim, zorder=-1)
+    # ax.set_xlabel('Action', fontsize=24)
 
-    #= Rollout
-    ax = axes[1]
-    im = ax.imshow(resultVisMtx.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
-    env.plot_trajectories(policy, ax, num_rnd_traj=5, theta=0.,
-        endType=rolloutEndType, c='w', lw=1.5, T=args.maxSteps)
-    ax.set_xlabel('Rollout RA', fontsize=24)
+    # #= Rollout
+    # ax = axes[1]
+    # im = ax.imshow(resultVisMtx.T, interpolation='none', extent=axStyle[0],
+    #     origin="lower", cmap='seismic', vmin=0, vmax=1, zorder=-1)
+    # env.plot_trajectories(policy, ax, num_rnd_traj=5, theta=0.,
+    #     endType=rolloutEndType, c='w', lw=1.5, T=args.maxSteps)
+    # ax.set_xlabel('Rollout RA', fontsize=24)
 
-    #= Value
-    ax = axes[0]
-    # v, xs, ys = env.get_value(q_func, theta=0, nx=nx, ny=ny)
-    im = ax.imshow(valueMtx.T, interpolation='none', extent=axStyle[0],
-        origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
-    CS = ax.contour(xs, ys, valueMtx.T, levels=[0], colors='k', linewidths=2,
-        linestyles='dashed')
-    ax.set_xlabel('Value', fontsize=24)
+    # #= Value
+    # ax = axes[0]
+    # # v, xs, ys = env.get_value(q_func, theta=0, nx=nx, ny=ny)
+    # im = ax.imshow(valueMtx.T, interpolation='none', extent=axStyle[0],
+    #     origin="lower", cmap='seismic', vmin=-0.5, vmax=0.5, zorder=-1)
+    # CS = ax.contour(xs, ys, valueMtx.T, levels=[0], colors='k', linewidths=2,
+    #     linestyles='dashed')
+    # ax.set_xlabel('Value', fontsize=24)
 
-    for ax in axes:
-        env.plot_target_failure_set(ax)
-        env.plot_formatting(ax)
+    # for ax in axes:
+    #     env.plot_target_failure_set(ax)
+    #     env.plot_formatting(ax)
 
-    fig.tight_layout()
-    if args.storeFigure:
-        figurePath = os.path.join(figureFolder, 'value_rollout_action.png')
-        fig.savefig(figurePath)
-    if args.plotFigure:
-        plt.show()
-        plt.pause(0.001)
-    plt.close()
+    # fig.tight_layout()
+    # if args.storeFigure:
+    #     figurePath = os.path.join(figureFolder, 'value_rollout_action.png')
+    #     fig.savefig(figurePath)
+    # if args.plotFigure:
+    #     plt.show()
+    #     plt.pause(0.001)
+    # plt.close()
+
+    # trainDict['resultMtx'] = resultMtx
+    # trainDict['actDistMtx'] = actDistMtx
+
     # endregion
-
-    trainDict['resultMtx'] = resultMtx
-    trainDict['actDistMtx'] = actDistMtx
 
 save_obj(trainDict, filePath)
 # endregion

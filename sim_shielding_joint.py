@@ -64,8 +64,6 @@ parser.add_argument("-lr",  "--learningRate",               help="learning rate"
     default=1e-3,   type=float)
 parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate decay",
     default=0.9,    type=float)
-# parser.add_argument("-g",   "--gamma",                      help="contraction coeff.",
-#     default=0.99,   type=float)
 parser.add_argument("-al",  "--alpha",                      help="alpha",
     default=0.2,    type=float)
 parser.add_argument("-ep",  "--epsPeriod",                  help="period of eps update",
@@ -288,7 +286,7 @@ trainRecords, trainProgress, violationRecord = agent.learn(
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
 print('The number of safety violations: {:d}/{:d}'.format(
-    violationRecord[-1], len(violationRecord)+1))
+    violationRecord[-1], len(violationRecord)))
 # endregion
 
 
