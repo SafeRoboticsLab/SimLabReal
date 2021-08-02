@@ -8,31 +8,23 @@ from matplotlib.ticker import LinearLocator
 from abc import abstractmethod
 import torch
 
-# import os
-# os.sys.path.append(os.path.join(os.getcwd(), '.'))
 from safe_rl.util_geom import euler2rot
 from gym_reachability.gym_reachability.envs.env_utils import plot_circle
 
 
 def rgba2rgb( rgba, background=(255,255,255) ):
     row, col, ch = rgba.shape
-
     if ch == 3:
         return rgba
-
     assert ch == 4, 'RGBA image has 4 channels.'
 
     rgb = np.zeros( (row, col, 3), dtype='float32' )
     r, g, b, a = rgba[:,:,0], rgba[:,:,1], rgba[:,:,2], rgba[:,:,3]
-
     a = np.asarray( a, dtype='float32' ) / 255.0
-
     R, G, B = background
-
     rgb[:,:,0] = r * a + (1.0 - a) * R
     rgb[:,:,1] = g * a + (1.0 - a) * G
     rgb[:,:,2] = b * a + (1.0 - a) * B
-
     return np.asarray( rgb, dtype='uint8' )
 
 
@@ -56,6 +48,8 @@ class NavigationObsPBEnv(gym.Env):
                         render=True,
                         sample_inside_obs=False,
                         uniformWallColor=False,
+                        maxSteps=100,   # train
+                        maxEvalSteps=100,   # eval
                         doneType='fail'):
         """
         __init__: initialization
@@ -68,6 +62,12 @@ class NavigationObsPBEnv(gym.Env):
         """
         super(NavigationObsPBEnv, self).__init__()
 
+        # Flag for train/eval
+        self.max_steps_train = maxSteps
+        self.max_steps_eval = maxEvalSteps
+        self.step_elapsed = 0
+        self.set_train_mode()        
+
         # Define dimensions
         self.state_bound = 2.
         self.bounds = np.array([[0., self.state_bound],
@@ -77,11 +77,13 @@ class NavigationObsPBEnv(gym.Env):
         self.high = self.bounds[:, 1]
         self.wall_height = 1.
         self.wall_thickness = 0.05
-        self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization
+        self.car_dim = [0.04, 0.02, 0.01]	# half dims, only for visualization - for collision, assume point
         self.camera_height = 0.2	# cannot be too low, otherwise bad depth
         self.sample_inside_obs = sample_inside_obs
         self.sample_inside_tar = True
         self.fixed_init = fixed_init
+        self._obs_buffer = 0 #! might not be necessary
+        self._boundary_buffer = 0
 
         # Set up observation and action space for Gym
         self.img_H = img_H
@@ -109,7 +111,6 @@ class NavigationObsPBEnv(gym.Env):
             self.back_wall_rgba = [0.3, 0.3, 0.3, 1.0]
             self.right_wall_rgba = [0.5, 0.5, 0.5, 1.0]
             self.front_wall_rgba = [0.7, 0.7, 0.7, 1.0]
-        self.obs_rgba = [1.0, 0.0, 0.0, 1.0]    # red
         self.goal_rgba  = [0.0, 1.0, 0.0, 1.0]  # green
 
         # Car initial x/y/theta
@@ -130,19 +131,40 @@ class NavigationObsPBEnv(gym.Env):
         self.dt = 0.1
         self.doneType = doneType
 
+        # Reward related
+        # self._obs_buffer = 0.2 # no cost if outside buffer
+        # self._boundary_buffer = 0.02    # not too close to boundary
+        self.sparse_reward = sparse_reward
+
         # Extract task info
         self._task = task
-        self._goal_loc = task.get('goal_loc', np.array([self.state_bound-0.2, 0.]))
+        self._goal_loc =task.get('goal_loc',np.array([self.state_bound-0.2,0.]))
         self._goal_radius = task.get('goal_radius', 0.15)
-        self._obs_loc  = task.get('obs_loc', np.array([self.state_bound/2, 0]))
-        self._obs_radius = task.get('obs_radius', 0.3)
-        self._obs_buffer = 0.2 # no cost if outside buffer
-        self._boundary_buffer = 0.02    # not too close to boundary
-        self.sparse_reward = sparse_reward
+        self._num_obs = task.get('num_obs', 5)
+        self._obs_loc  = task.get('obs_loc',np.array([[self.state_bound/2,-0.6],
+                                                     [self.state_bound/2, -0.3],
+                                                     [self.state_bound/2, 0],
+                                                     [self.state_bound/2, 0.3],
+                                                    [self.state_bound/2, 0.6]]))
+        self._obs_radius = task.get('obs_radius', np.array([0.05, 0.05, 0.05, 0.05, 0.05]))  # was 0.3 for single obstable
+        self._obs_rgba = task.get('obs_rgba',np.array([[1.0, 0.0, 0.0, 1.0],
+                                                     [1.0, 0.0, 0.0, 1.0],
+                                                     [1.0, 0.0, 0.0, 1.0],
+                                                     [1.0, 0.0, 0.0, 1.0],
+                                                     [1.0, 0.0, 0.0, 1.0]]))
 
         # Set up PyBullet parameters
         self._renders = render
         self._physics_client_id = -1
+
+
+    def set_train_mode(self):
+        self.flag_train = True
+        self.max_steps = self.max_steps_train
+
+    def set_eval_mode(self):
+        self.flag_train = False
+        self.max_steps = self.max_steps_eval
 
 
     def seed(self, seed=None):
@@ -159,11 +181,11 @@ class NavigationObsPBEnv(gym.Env):
         # return [seed]
 
 
-    # TODO: call this in multi-env setting
     def reset_task(self, task):
         self._task = task
         self._goal_loc = task['goal_loc']
         self._goal_radius = task['goal_radius']
+        self._num_obs = task['num_obs']
         self._obs_loc = task['obs_loc']
         self._obs_radius = task['obs_radius']
 
@@ -176,6 +198,9 @@ class NavigationObsPBEnv(gym.Env):
                                             self.sample_inside_tar)
         elif state_init is not None:
             self._state = state_init
+
+        # Reset timer
+        self.step_elapsed = 0
 
         # Start PyBullet session if first time
         # print("----------- reset simulation ---------------")
@@ -282,20 +307,21 @@ class NavigationObsPBEnv(gym.Env):
                                 self.wall_height+self.wall_thickness/2])
 
             # Obstacle
-            obs_collision_id = p.createCollisionShape(
-                p.GEOM_CYLINDER,
-                radius=self._obs_radius,
-                height=self.wall_height)
-            obs_visual_id = p.createVisualShape(
-                p.GEOM_CYLINDER,
-                rgbaColor=self.obs_rgba,
-                radius=self._obs_radius,
-                length=self.wall_height)
-            self.obs_id = p.createMultiBody(
-                baseMass=0,
-                baseCollisionShapeIndex=obs_collision_id,
-                baseVisualShapeIndex=obs_visual_id,
-                basePosition=np.append(self._obs_loc, self.wall_height/2))
+            for obs_ind in range(self._num_obs):
+                obs_collision_id = p.createCollisionShape(
+                    p.GEOM_CYLINDER,
+                    radius=self._obs_radius[obs_ind],
+                    height=self.wall_height)
+                obs_visual_id = p.createVisualShape(
+                    p.GEOM_CYLINDER,
+                    rgbaColor=self._obs_rgba[obs_ind],
+                    radius=self._obs_radius[obs_ind],
+                    length=self.wall_height)
+                self.obs_id = p.createMultiBody(
+                    baseMass=0,
+                    baseCollisionShapeIndex=obs_collision_id,
+                    baseVisualShapeIndex=obs_visual_id,
+                    basePosition=np.append(self._obs_loc[obs_ind], self.wall_height/2))
 
             # Door - behind the virtual target
             door_visual_id = p.createVisualShape(
@@ -407,43 +433,38 @@ class NavigationObsPBEnv(gym.Env):
         #= `l_x` and `g_x` signal
         l_x = self.target_margin(self._state)
         g_x, boundary_margin = self.safety_margin(self._state, return_boundary=True)
-        #! Even though we have a buffer here, we still have observations that do not
-        #! have the obstacle in the FoV. If possible, I want the done flag to be raised
-        #! exactly when the agent hits the obstacle, so the shielding criteria and the
-        #!  backup policy are more easily evaluated.
-        # fail = g_x >= -0.01 # prevent bad image at the boundary - small value to buffer
-        fail = (g_x > 0)
+        fail = (g_x > -self._obs_buffer) # prevent bad image at the boundary - small value to buffer
         success = l_x <= 0
 
+        dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
+        min_dist_to_obs_boundary = np.min(np.linalg.norm(self._state[:2][np.newaxis] - self._obs_loc, axis=1)-self._obs_radius)
         #= Sparse `reward` - small penalty for wandering around
         if self.sparse_reward:
             reward = -0.01
 
             # Large reward for reaching target
-            dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
             if dist_to_goal_center < self._goal_radius:
                 reward = 10
 
             # Large penalty for reaching obstacle or boundary
-            dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
-            if dist_to_obs_center < self._obs_radius:
-                reward -= 5.0
-            if boundary_margin > -self._boundary_buffer:
-                reward -= 5.0
+            if min_dist_to_obs_boundary <= self._obs_buffer: # g_x >= -0.01
+                reward = -5
+            if boundary_margin > self._boundary_buffer:
+                reward = -5
 
         else:
             #= Dense `reward`
-            reward = 4
-            dist_to_goal_center = np.linalg.norm(self._state[:2] - self._goal_loc)
-            reward -= dist_to_goal_center*2
-            dist_to_obs_center = np.linalg.norm(self._state[:2] - self._obs_loc)
-            dist_to_obs_boundary = dist_to_obs_center-self._obs_radius
-            if dist_to_obs_center < self._obs_radius:
-                reward = 0
-            elif dist_to_obs_center < (self._obs_radius+self._obs_buffer):
-                reward -= (1-dist_to_obs_boundary/self._obs_buffer)
-            if boundary_margin > -self._boundary_buffer:
-                reward -= (1+boundary_margin/self._boundary_buffer)
+            if dist_to_goal_center < self._goal_radius:
+                reward = 10
+            else:
+                # reward = 5 - dist_to_goal_center*2
+                reward = 5 - dist_to_goal_center
+            if min_dist_to_obs_boundary <= self._obs_buffer:
+                reward = -5
+            # elif min_dist_to_obs_center < (self._obs_radius+self._obs_buffer):
+            #     reward -= (1-dist_to_obs_boundary/self._obs_buffer)
+            if boundary_margin > self._boundary_buffer:
+                reward = -5
 
         #= `done` signal
         if self.doneType == 'end':
@@ -454,6 +475,11 @@ class NavigationObsPBEnv(gym.Env):
             done = fail or success
         else:
             raise ValueError("invalid doneType")
+
+        # Count time
+        self.step_elapsed += 1
+        if self.step_elapsed == self.max_steps:
+            done = True
 
         # TODO: Tuning
         if done and self.doneType == 'fail':
@@ -485,7 +511,7 @@ class NavigationObsPBEnv(gym.Env):
         # Rotated vectors
         camera_vector = rot_matrix.dot(init_camera_vector)
         up_vector = rot_matrix.dot(init_up_vector)
-        cam_pos = np.array([x,y,self.camera_height])	# top of car
+        cam_pos = np.array([x,y,self.camera_height])+rot_matrix.dot((-self.car_dim[0]/2,0,0))	# top and rear of car
         view_matrix = self._p.computeViewMatrix(cam_pos,
                                         cam_pos + 0.1 * camera_vector,
                                         up_vector)
@@ -518,8 +544,8 @@ class NavigationObsPBEnv(gym.Env):
     #== GETTER ==
     def report(self):
         print("Dynamic parameters:")
-        print("- cons: {:.1f}, tar: {:.1f}".format(
-            self._obs_radius, self._goal_radius))
+        # print("- cons: {:.1f}, tar: {:.1f}".format(
+        #     self._obs_radius, self._goal_radius))
         print("- v: {:.1f}, w_max: {:.1f}, dt: {:.1f}".format(
             self.v, self.action_lim[0], self.dt))
         print("Observation shape:")
@@ -624,7 +650,6 @@ class NavigationObsPBEnv(gym.Env):
         center, radius = c_r
         dist_to_center = np.linalg.norm(s[:2] - center)
         margin = dist_to_center - radius
-
         if negativeInside:
             return margin
         else:
@@ -663,10 +688,8 @@ class NavigationObsPBEnv(gym.Env):
         boundary_margin = self._calculate_margin_rect(s, x_y_w_h, negativeInside=True)
         g_xList = [boundary_margin]
 
-        c_r = [self._obs_loc, self._obs_radius]
-        obs_margin = self._calculate_margin_circle(s, c_r, negativeInside=False)
-        g_xList.append(obs_margin)
-
+        for obs_loc, obs_radius in zip(self._obs_loc, self._obs_radius):
+            g_xList += [self._calculate_margin_circle(s, [obs_loc, obs_radius], negativeInside=False)]
         safety_margin = np.max(np.array(g_xList))
         if return_boundary:
             return safety_margin, boundary_margin
@@ -674,9 +697,8 @@ class NavigationObsPBEnv(gym.Env):
             return safety_margin
 
     #== Trajectories Rollout ==
-    def simulate_one_trajectory(self, policy, T=250, endType='TF',
-            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
-            latent_prior=None):
+    def simulate_one_trajectory(self, policy, T=None, endType='TF',
+            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, latent_prior=None):
         """
         simulate_one_trajectory: simulate the trajectory given the state or
             randomly initialized.
@@ -717,6 +739,8 @@ class NavigationObsPBEnv(gym.Env):
         if latent_prior is not None:
             z = latent_prior.sample().view(1,-1)
 
+        if T is None:
+            T = self.max_steps
         for t in range(T):
             #= get obs, g, l
             obs = self._get_obs(_state)
@@ -768,8 +792,8 @@ class NavigationObsPBEnv(gym.Env):
         return traj, result, minV, info
 
 
-    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, endType='TF',
-        states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, latent_prior=None):
+    def simulate_trajectories(self, policy, states=None, endType='TF',  latent_prior=None, num_rnd_traj=None, T=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, ):
+
         """
         simulate_trajectories: simulate the trajectories. If the states are not
             provided, we pick the initial states from the discretized state space.
@@ -846,7 +870,7 @@ class NavigationObsPBEnv(gym.Env):
             labels (list, optional): x- and y- labels. Defaults to None.
             boolPlot (bool, optional): plot the binary values. Defaults to False.
         """
-        thetaList = [np.pi, np.pi/2, 0]
+        thetaList = [-np.pi/4, 0, np.pi/4]
         fig = plt.figure(figsize=(12, 4))
         ax1 = fig.add_subplot(131)
         ax2 = fig.add_subplot(132)
@@ -866,8 +890,8 @@ class NavigationObsPBEnv(gym.Env):
             if plotV:
                 self.plot_v_values(q_func, fig, ax, theta=theta,
                                     boolPlot=boolPlot, cbarPlot=cbarPlot,
-                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap,
-                                    normalize_v=normalize_v)
+                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, 
+                                    cmap=cmap, normalize_v=normalize_v)
 
             #== Plot Trajectories ==
             visual_initial_states = np.tile(self.visual_initial_states, (self.num_traj_per_visual_initial_states, 1))
@@ -884,6 +908,7 @@ class NavigationObsPBEnv(gym.Env):
             fig.tight_layout()
 
             ax.set_xlabel(r'$\theta={:.0f}^\circ$'.format(theta*180/np.pi), fontsize=28)
+        return fig
 
 
     def plot_v_values(self, q_func, fig, ax, theta=np.pi/2,
@@ -992,8 +1017,9 @@ class NavigationObsPBEnv(gym.Env):
             lw (int, optional): the linewidth of the boundaries. Defaults to 3.
             zorder (int, optional): the graph oder of the boundaries. Defaults to 0.
         """
-        plot_circle(self._obs_loc, self._obs_radius, ax,
-            c=c_c, lw=lw, zorder=zorder)
+        for obs_loc, obs_radius in zip(self._obs_loc, self._obs_radius):
+            plot_circle(obs_loc, obs_radius, ax,
+                c=c_c, lw=lw, zorder=zorder)
         plot_circle(self._goal_loc, self._goal_radius, ax, c=c_t,
             lw=lw, zorder=zorder)
 
@@ -1025,16 +1051,3 @@ class NavigationObsPBEnv(gym.Env):
         ax.xaxis.set_major_formatter('{x:.1f}')
         ax.yaxis.set_major_locator(LinearLocator(5))
         ax.yaxis.set_major_formatter('{x:.1f}')
-
-
-    ################ Not used in episode ################
-    def sample_tasks(self, num_tasks):
-        # xpos = radius*np.cos(angle)
-        # ypos = radius*np.sin(angle)
-        # self.goals = np.vstack((xpos, ypos)).T
-        goal = [1.0, 0.0]
-        obs_loc = [0.5, 0.0]
-        obs_radius = 0.1
-        tasks = [{'goal': goal, 'obs_loc': obs_loc, 'obs_radius': obs_radius}
-            for _ in range(num_tasks)]
-        return tasks

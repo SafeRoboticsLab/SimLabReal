@@ -151,6 +151,8 @@ print(outFolder)
 figureFolder = os.path.join(outFolder, 'figure')
 os.makedirs(figureFolder, exist_ok=True)
 
+# TODO: sample tasks
+
 #== Environment ==
 print("\n== Environment Information ==")
 render = False

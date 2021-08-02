@@ -102,7 +102,6 @@ class ActorCritic(object):
 
         # NN: batch size, maximal number of NNs stored
         self.BATCH_SIZE = CONFIG.BATCH_SIZE
-        # self.start_updates = 1000   #!
         self.MAX_MODEL = CONFIG.MAX_MODEL
         self.device = CONFIG.DEVICE
 
