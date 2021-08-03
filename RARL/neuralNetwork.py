@@ -68,8 +68,8 @@ class MLP(nn.Module):
                     module = nn.Sequential( OrderedDict([
                         ('linear_1',    nn.Linear(i_dim, o_dim)),
                         ('norm_1',      nn.LayerNorm(o_dim)),
-                        ('tanh_1',      activationDict['Tanh']),
-                        ('act_1',       activationDict[actType]),
+                        # ('tanh_1',      activationDict['Tanh']),
+                        # ('act_1',       activationDict[actType]),
                     ]))
                     self.moduleList.append(module)
                 else:
