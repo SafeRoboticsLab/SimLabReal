@@ -21,7 +21,7 @@ from .SAC_image import SAC_image
 from .ReplayMemoryOnline import ReplayMemoryOnline
 
 # Include latent variable in buffer
-TransitionLatent = namedtuple('TransitionLatent', ['z', 's', 'a', 'r', 's_', 'info'])
+TransitionLatent = namedtuple('TransitionLatent', ['z', 's', 'a', 'r', 's_', 'done', 'info'])
 
 
 class SAC_image_maxEnt(SAC_image):
@@ -33,7 +33,7 @@ class SAC_image_maxEnt(SAC_image):
             CONFIG (Class object): hyper-parameter configuration.
             verbose (bool, optional): print info or not. Defaults to True.
         """
-        super(SAC_image_maxEnt, self).__init__(CONFIG)
+        super(SAC_image_maxEnt, self).__init__(CONFIG, verbose)
         self.share_disc_encoder_weight = False
         self.actor_freq = 1
 
@@ -158,13 +158,19 @@ class SAC_image_maxEnt(SAC_image):
 
     def unpack_batch(self, batch):
         # `non_final_mask` is used for environments that have next state to be None
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.s_)),
-            dtype=torch.bool).to(self.device)
-        non_final_state_nxt = torch.FloatTensor([
-            s for s in batch.s_ if s is not None]).to(self.device)
+        # non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.s_)), dtype=torch.bool).to(self.device)
+        non_final_mask = torch.tensor(
+            tuple(map(lambda s: not s, batch.done)),
+            dtype=torch.bool).view(-1).to(self.device)
+        # non_final_state_nxt = torch.FloatTensor([
+            # s for s in batch.s_ if s is not None]).to(self.device)
+        non_final_state_nxt = torch.cat([
+            s for done, s in zip(batch.done, batch.s_) if not done]).to(self.device)
         latent = torch.cat(batch.z).to(self.device)  # stored as tensor
-        state  = torch.FloatTensor(batch.s).to(self.device)
-        action = torch.FloatTensor(batch.a).to(self.device).view(-1, self.actionDim)
+        # state  = torch.FloatTensor(batch.s).to(self.device)
+        state  = torch.cat(batch.s).to(self.device)
+        # action = torch.FloatTensor(batch.a).to(self.device).view(-1, self.actionDim)
+        action = torch.cat(batch.a).to(self.device)
         reward = torch.FloatTensor(batch.r).to(self.device)
 
         g_x = torch.FloatTensor(
@@ -175,11 +181,12 @@ class SAC_image_maxEnt(SAC_image):
             tuple(map(lambda s: not s['init'], batch.info)),
             dtype=torch.bool).view(-1).to(self.device)
         valid_mask = torch.logical_and(non_final_mask, non_init_mask)
-        valid_state_next = torch.FloatTensor([
+        # valid_state_next = torch.FloatTensor([
+            # s for s, t in zip(batch.s_, valid_mask) if t]).to(self.device)
+        valid_state_next = torch.cat([
             s for s, t in zip(batch.s_, valid_mask) if t]).to(self.device)
         # non_init_mask = torch.tensor(
             # [~info['init'] for info in batch.info], dtype=torch.bool).to(self.device).view(-1)
-
         return non_final_mask, non_final_state_nxt, latent, state, action, reward, g_x, l_x, valid_mask, valid_state_next
 
 
@@ -383,7 +390,7 @@ class SAC_image_maxEnt(SAC_image):
         useVis = 0
         if useVis:
             import visdom
-            vis = visdom.Visdom(env='test_sac_maxent_dense_multi_obs_0', port=8098)
+            vis = visdom.Visdom(env='test_sac_maxent_dense_multi_obs_2', port=8098)
             q_loss_window = vis.line(
                 X=array([[0]]),
                 Y=array([[0]]),
@@ -415,6 +422,7 @@ class SAC_image_maxEnt(SAC_image):
         if warmupBuffer:
             self.initBuffer(env, ratio=warmupBufferRatio)
         endInitBuffer = time.time()
+        print('Time to warmup: ', endInitBuffer-startInitBuffer)
 
         # == Warmup Q ==
         startInitQ = time.time()

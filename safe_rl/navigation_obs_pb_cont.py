@@ -10,6 +10,8 @@ class NavigationObsPBEnvCont(NavigationObsPBEnv):
     def __init__(self, task={},
                         img_H=128,
                         img_W=128,
+                        maxSteps=100,
+                        maxEvalSteps=100,
                         num_traj_per_visual_initial_states=1,
                         fixed_init=False,
                         sparse_reward=False,
@@ -25,16 +27,17 @@ class NavigationObsPBEnvCont(NavigationObsPBEnv):
             img_W (int, optional): width of the observation.. Defaults to 96.
             render (bool, optional): use pb.GUI if True. Defaults to True.
         """
-        super(NavigationObsPBEnvCont, self).__init__(
-            task=task,
-            img_H=img_H,
-            img_W=img_W,
-            num_traj_per_visual_initial_states=num_traj_per_visual_initial_states,
-            fixed_init=fixed_init,
-            sparse_reward=sparse_reward,
-            useRGB=useRGB,
-            render=render,
-            doneType=doneType)
+        super(NavigationObsPBEnvCont, self).__init__(task=task,
+        img_H=img_H,
+        img_W=img_W,
+        maxSteps=maxSteps,
+        maxEvalSteps=maxEvalSteps,
+        num_traj_per_visual_initial_states=num_traj_per_visual_initial_states,
+        fixed_init=fixed_init,
+        sparse_reward=sparse_reward,
+        useRGB=useRGB,
+        render=render,
+        doneType=doneType)
 
         # Continuous action space
         self.action_space = gym.spaces.Box(-self.action_lim, self.action_lim)

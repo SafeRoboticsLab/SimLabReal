@@ -48,6 +48,8 @@ class NavigationObsPBEnv(gym.Env):
                         render=True,
                         sample_inside_obs=False,
                         uniformWallColor=False,
+                        maxSteps=100,   # train
+                        maxEvalSteps=100,   # eval
                         doneType='fail'):
         """
         __init__: initialization
@@ -59,6 +61,12 @@ class NavigationObsPBEnv(gym.Env):
             render (bool, optional): use pb.GUI if True. Defaults to True.
         """
         super(NavigationObsPBEnv, self).__init__()
+
+        # Flag for train/eval
+        self.max_steps_train = maxSteps
+        self.max_steps_eval = maxEvalSteps
+        self.step_elapsed = 0
+        self.set_train_mode()        
 
         # Define dimensions
         self.state_bound = 2.
@@ -150,6 +158,15 @@ class NavigationObsPBEnv(gym.Env):
         self._physics_client_id = -1
 
 
+    def set_train_mode(self):
+        self.flag_train = True
+        self.max_steps = self.max_steps_train
+
+    def set_eval_mode(self):
+        self.flag_train = False
+        self.max_steps = self.max_steps_eval
+
+
     def seed(self, seed=None):
         self.seed_val = seed
         self.action_space.seed(self.seed_val)
@@ -164,7 +181,6 @@ class NavigationObsPBEnv(gym.Env):
         # return [seed]
 
 
-    # TODO: call this in multi-env setting
     def reset_task(self, task):
         self._task = task
         self._goal_loc = task['goal_loc']
@@ -182,6 +198,9 @@ class NavigationObsPBEnv(gym.Env):
                                             self.sample_inside_tar)
         elif state_init is not None:
             self._state = state_init
+
+        # Reset timer
+        self.step_elapsed = 0
 
         # Start PyBullet session if first time
         # print("----------- reset simulation ---------------")
@@ -457,6 +476,11 @@ class NavigationObsPBEnv(gym.Env):
         else:
             raise ValueError("invalid doneType")
 
+        # Count time
+        self.step_elapsed += 1
+        if self.step_elapsed == self.max_steps:
+            done = True
+
         # TODO: Tuning
         if done and self.doneType == 'fail':
             g_x = 1
@@ -673,9 +697,8 @@ class NavigationObsPBEnv(gym.Env):
             return safety_margin
 
     #== Trajectories Rollout ==
-    def simulate_one_trajectory(self, policy, T=250, endType='TF',
-            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True,
-            latent_prior=None):
+    def simulate_one_trajectory(self, policy, T=None, endType='TF',
+            state=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, latent_prior=None):
         """
         simulate_one_trajectory: simulate the trajectory given the state or
             randomly initialized.
@@ -716,6 +739,8 @@ class NavigationObsPBEnv(gym.Env):
         if latent_prior is not None:
             z = latent_prior.sample().view(1,-1)
 
+        if T is None:
+            T = self.max_steps
         for t in range(T):
             #= get obs, g, l
             obs = self._get_obs(_state)
@@ -767,8 +792,8 @@ class NavigationObsPBEnv(gym.Env):
         return traj, result, minV, info
 
 
-    def simulate_trajectories(self, policy, num_rnd_traj=None, T=250, endType='TF',
-        states=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, latent_prior=None):
+    def simulate_trajectories(self, policy, states=None, endType='TF',  latent_prior=None, num_rnd_traj=None, T=None, theta=np.pi/2, sample_inside_obs=True, sample_inside_tar=True, ):
+
         """
         simulate_trajectories: simulate the trajectories. If the states are not
             provided, we pick the initial states from the discretized state space.
@@ -845,7 +870,7 @@ class NavigationObsPBEnv(gym.Env):
             labels (list, optional): x- and y- labels. Defaults to None.
             boolPlot (bool, optional): plot the binary values. Defaults to False.
         """
-        thetaList = [np.pi, np.pi/2, 0]
+        thetaList = [-np.pi/4, 0, np.pi/4]
         fig = plt.figure(figsize=(12, 4))
         ax1 = fig.add_subplot(131)
         ax2 = fig.add_subplot(132)
@@ -865,8 +890,8 @@ class NavigationObsPBEnv(gym.Env):
             if plotV:
                 self.plot_v_values(q_func, fig, ax, theta=theta,
                                     boolPlot=boolPlot, cbarPlot=cbarPlot,
-                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, cmap=cmap,
-                                    normalize_v=normalize_v)
+                                    vmin=vmin, vmax=vmax, nx=nx, ny=ny, 
+                                    cmap=cmap, normalize_v=normalize_v)
 
             #== Plot Trajectories ==
             visual_initial_states = np.tile(self.visual_initial_states, (self.num_traj_per_visual_initial_states, 1))
