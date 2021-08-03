@@ -102,7 +102,6 @@ class VecPyTorch(VecEnvWrapper):
         reward = torch.from_numpy(reward).unsqueeze(dim=1).float()
         return obs, reward, done, info
     
-    
     def simulate_trajectories(self, policy, states, endType, latent_prior):
         num_traj = states.shape[0]
         num_batch = math.ceil(num_traj/self.num_envs)

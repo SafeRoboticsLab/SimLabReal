@@ -392,6 +392,7 @@ class SACImageMaxEntConfig():
         MODE='RA',
         TERMINAL_TYPE='g',
         # NN Architecture
+        OBS_CHANNEL=3,
         USE_BN=False,
         USE_SM=True,
         KERNEL_SIZE=[5,5,3],
@@ -438,6 +439,7 @@ class SACImageMaxEntConfig():
         self.TERMINAL_TYPE = TERMINAL_TYPE
 
         # NN Architecture
+        self.OBS_CHANNEL = OBS_CHANNEL
         self.USE_BN = USE_BN
         self.USE_SM = USE_SM
         self.KERNEL_SIZE = KERNEL_SIZE
