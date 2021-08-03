@@ -322,14 +322,15 @@ class PolicyShieldingJoint(object):
 
         Args:
             step (int): #updates trained.
-            logs_path (str): the path of the directory, under this folder there should
-                be critic/ and agent/ folders.
+            logs_path (str): the path of the directory, under this folder there
+                should be critic/ and agent/ folders.
             agentType (str): performance policy or backup policy.
         """
+        modelFolder = path_c = os.path.join(logs_path, agentType)
         path_c = os.path.join(
-            logs_path, agentType, 'critic', 'critic-{}.pth'.format(step))
+            modelFolder, 'critic', 'critic-{}.pth'.format(step))
         path_a  = os.path.join(
-            logs_path, agentType, 'actor',  'actor-{}.pth'.format(step))
+            modelFolder, 'actor',  'actor-{}.pth'.format(step))
         if agentType == 'backup':
             self.backup.critic.load_state_dict(
                 torch.load(path_c, map_location=self.device))
@@ -350,5 +351,6 @@ class PolicyShieldingJoint(object):
             self.performance.actor.load_state_dict(
                 torch.load(path_a, map_location=self.device))
             self.performance.actor.to(self.device)
-        print('  <= Restore model with {} updates from {}.'.format(step, logs_path))
+        print('  <= Restore {} with {} updates from {}.'.format(
+            agentType, step, modelFolder))
     # endregion
