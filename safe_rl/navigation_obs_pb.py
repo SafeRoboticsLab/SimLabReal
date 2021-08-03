@@ -132,8 +132,6 @@ class NavigationObsPBEnv(gym.Env):
         self.doneType = doneType
 
         # Reward related
-        # self._obs_buffer = 0.2 # no cost if outside buffer
-        # self._boundary_buffer = 0.02    # not too close to boundary
         self.sparse_reward = sparse_reward
 
         # Extract task info
@@ -455,14 +453,11 @@ class NavigationObsPBEnv(gym.Env):
         else:
             #= Dense `reward`
             if dist_to_goal_center < self._goal_radius:
-                reward = 10
+                reward = 5
             else:
-                # reward = 5 - dist_to_goal_center*2
-                reward = 5 - dist_to_goal_center
+                reward = 3 - dist_to_goal_center
             if min_dist_to_obs_boundary <= self._obs_buffer:
                 reward = -5
-            # elif min_dist_to_obs_center < (self._obs_radius+self._obs_buffer):
-            #     reward -= (1-dist_to_obs_boundary/self._obs_buffer)
             if boundary_margin > self._boundary_buffer:
                 reward = -5
 
@@ -482,7 +477,7 @@ class NavigationObsPBEnv(gym.Env):
             done = True
 
         # TODO: Tuning
-        if done and self.doneType == 'fail':
+        if self.doneType == 'fail' and fail:
             g_x = 1
 
         return self._get_obs(self._state), reward, done, {'task': self._task,
@@ -602,14 +597,12 @@ class NavigationObsPBEnv(gym.Env):
             y = ys[idx[1]]
 
             # getCameraImage somehow hangs at the walls
-            if (abs(x) == self.state_bound or abs(x) == 0) or abs(y) == self.state_bound/2:
-                v[idx] = 0
-            else:
-                state = np.array([x, y, theta])
-                obs = self._get_obs(state)
-                # obsTensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
-                # v[idx] = q_func(obsTensor).min(dim=1)[0].cpu().detach().numpy()
-                v[idx] = q_func(obs)
+            # if (abs(x) == self.state_bound or abs(x) == 0) or abs(y) == self.state_bound/2:
+            #     v[idx] = 0
+            # else:
+            state = np.array([x, y, theta])
+            obs = self._get_obs(state)
+            v[idx] = q_func(obs)
             it.iternext()
         return v, xs, ys
 
