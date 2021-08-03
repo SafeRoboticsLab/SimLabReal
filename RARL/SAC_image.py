@@ -20,7 +20,7 @@ from .ActorCritic import ActorCritic, Transition
 import copy
 
 class SAC_image(ActorCritic):
-    def __init__(self, CONFIG, CONFIG_ARCH, verbose=True):
+    def __init__(self, CONFIG, verbose=True):
         """
         __init__: initialization.
 
@@ -57,16 +57,16 @@ class SAC_image(ActorCritic):
         self.terminalType = CONFIG.TERMINAL_TYPE
 
         #= critic/actor-related hyper-parameters
-        # self.mlp_dim_actor = CONFIG.MLP_DIM['actor']
-        # self.mlp_dim_critic = CONFIG.MLP_DIM['critic']
-        # self.img_sz = CONFIG.IMG_SZ
-        # self.kernel_sz = CONFIG.KERNEL_SIZE
-        # self.n_channel = CONFIG.N_CHANNEL
+        self.mlp_dim_actor = CONFIG.MLP_DIM['actor']
+        self.mlp_dim_critic = CONFIG.MLP_DIM['critic']
+        self.img_sz = CONFIG.IMG_SZ
+        self.kernel_sz = CONFIG.KERNEL_SIZE
+        self.n_channel = CONFIG.N_CHANNEL
         # self.use_ln = CONFIG.USE_LN
-        # self.use_sm = CONFIG.USE_SM
-        # self.activation_actor = CONFIG.ACTIVATION['actor']
-        # self.activation_critic = CONFIG.ACTIVATION['critic']
-        self.build_network(CONFIG_ARCH, verbose=verbose)
+        self.use_sm = CONFIG.USE_SM
+        self.activation_actor = CONFIG.ACTIVATION['actor']
+        self.activation_critic = CONFIG.ACTIVATION['critic']
+        # self.build_network(CONFIG_ARCH, verbose=verbose)
 
 
     def build_network(self, CONFIG, verbose=True):
