@@ -302,7 +302,7 @@ if args.plotFigure or args.storeFigure:
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
 
     data = trainProgress[0][:, 0]
-    ax = axes[1]
+    ax = axes[0]
     x = np.arange(data.shape[0]) + 1
     ax.plot(x, data, 'b-o')
     ax.set_xlabel('Index', fontsize=18)
