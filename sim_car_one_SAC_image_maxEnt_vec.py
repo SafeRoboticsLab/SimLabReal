@@ -62,7 +62,8 @@ def main(args):
         sparse_reward=args.sparse_reward,
         num_traj_per_visual_initial_states=args.num_traj_per_visual_initial_states,
         doneType=args.doneType)
-    env = NavigationObsPBEnvCont(maxSteps=args.maxSteps, maxEvalSteps=args.maxEvalSteps, #!
+    env = NavigationObsPBEnvCont(
+        maxSteps=args.maxSteps, maxEvalSteps=args.maxEvalSteps, #!
         render=render, img_H=img_sz, img_W=img_sz,
         fixed_init=args.fixed_init,
         sparse_reward=args.sparse_reward,
@@ -130,11 +131,11 @@ def main(args):
         LR_D=args.learningRate, # discriminator
         LR_C=args.learningRate,
         LR_C_PERIOD=updatePeriod,
-        LR_C_END=args.learningRate/10,
+        LR_C_END=args.learningRate,
         LR_C_DECAY=args.learningRateDecay,
         LR_A=args.learningRate,
         LR_A_PERIOD=updatePeriod,
-        LR_A_END=args.learningRate/10,
+        LR_A_END=args.learningRate,
         LR_A_DECAY=args.learningRateDecay,
         LR_Al=5e-4,
         LR_Al_END=1e-5,
@@ -171,11 +172,11 @@ if __name__ == "__main__":
     parser.add_argument("-nc", "--num_cpus",     help="number of threads",
         default=8,      type=int)
     parser.add_argument("-dt",  "--doneType",       help="when to raise done flag",
-        default='TF',  type=str)
+        default='fail',  type=str)
     parser.add_argument("-rnd", "--randomSeed",     help="random seed",
         default=0,      type=int)
     parser.add_argument("-ms",  "--maxSteps",       help="maximum steps",
-        default=50,    type=int)
+        default=100,    type=int)
     parser.add_argument("-mes", "--maxEvalSteps",   help="maximum eval steps",
         default=100,    type=int)
     parser.add_argument("-ts",  "--targetScaling",  help="scaling of ell",
@@ -191,7 +192,7 @@ if __name__ == "__main__":
     parser.add_argument("-wi",  "--warmupIter",         help="warmup iteration",
         default=10000,  type=int)
     parser.add_argument("-wbr", "--warmupBufferRatio",  help="warmup buffer ratio",
-        default=1.0, type=float)
+        default=0.0, type=float)
     parser.add_argument("-mu",  "--maxUpdates",         help="maximal #gradient updates",
         default=800000, type=int)
     parser.add_argument("-ut",  "--updateTimes",        help="hyper-param. update times",

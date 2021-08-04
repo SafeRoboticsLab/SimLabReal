@@ -262,7 +262,7 @@ class TwinnedQNetwork(nn.Module):
 
 #== Policy (Actor) Model ==
 class GaussianPolicy(nn.Module):
-    def __init__(self, dimList, actionMag, actType='Tanh', use_ln=True, device='cpu',
+    def __init__(self, dimList, actionMag, actType='ReLU', use_ln=True, device='cpu',
             verbose=True):
         super(GaussianPolicy, self).__init__()
         self.device = device
@@ -283,8 +283,7 @@ class GaussianPolicy(nn.Module):
         #             ('act_2',       activationDict[actType]),
         #             ('linear_3',    nn.Linear(dimList[2], dimList[3])),
         # ])).to(device)
-        self.log_std = MLP(dimList, actType, outActType='Identity', use_ln=use_ln,
-            verbose=False).to(device)
+        self.log_std = MLP(dimList, actType, outActType='Identity', use_ln=use_ln, verbose=False).to(device)
         if verbose:
             print("The MLP for MEAN has the architecture as below:")
             print(self.mean.moduleList)

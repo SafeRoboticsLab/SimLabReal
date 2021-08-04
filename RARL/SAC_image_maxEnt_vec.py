@@ -25,6 +25,34 @@ class SAC_image_maxEnt_vec(SAC_image_maxEnt):
         super(SAC_image_maxEnt_vec, self).__init__(CONFIG, verbose)
 
 
+    def unpack_batch(self, batch):
+        # `non_final_mask` is used for environments that have next state to be None
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.s_)), dtype=torch.bool).to(self.device)
+        non_final_mask = torch.tensor(
+            tuple(map(lambda s: not s, batch.done)),
+            dtype=torch.bool).view(-1).to(self.device)
+        # non_final_state_nxt = torch.FloatTensor([
+            # s for s in batch.s_ if s is not None]).to(self.device)
+        non_final_state_nxt = torch.cat([
+            s for done, s in zip(batch.done, batch.s_) if not done]).to(self.device)
+        latent = torch.cat(batch.z).to(self.device)  # stored as tensor
+        state  = torch.cat(batch.s).to(self.device)
+        action = torch.cat(batch.a).to(self.device) # FloatTensor
+        reward = torch.FloatTensor(batch.r).to(self.device)
+
+        g_x = torch.FloatTensor(
+            [info['g_x'] for info in batch.info]).to(self.device).view(-1)
+        l_x = torch.FloatTensor(
+            [info['l_x'] for info in batch.info]).to(self.device).view(-1)
+        non_init_mask = torch.tensor(
+            tuple(map(lambda s: not s['init'], batch.info)),
+            dtype=torch.bool).view(-1).to(self.device)
+        valid_mask = torch.logical_and(non_final_mask, non_init_mask)
+        valid_state_next = torch.cat([
+            s for s, t in zip(batch.s_, valid_mask) if t]).to(self.device)
+        return non_final_mask, non_final_state_nxt, latent, state, action, reward, g_x, l_x, valid_mask, valid_state_next
+
+
     def initBuffer(self, venv, ratio=1.0):
         cnt = 0
         s = venv.reset(random_init=not self.fixed_init)
@@ -56,10 +84,10 @@ class SAC_image_maxEnt_vec(SAC_image_maxEnt):
                 showBool=False, vmin=-1, vmax=1, numRndTraj=200,
                 storeModel=True, saveBest=False, outFolder='RA', verbose=True):
 
-        useVis = 0
+        useVis = 1
         if useVis:
             import visdom
-            vis = visdom.Visdom(env='test_sac_maxent_dense_multi_obs_2', port=8098)
+            vis = visdom.Visdom(env='test_sac_maxent_dense_multi_obs_3', port=8098)
             q_loss_window = vis.line(
                 X=array([[0]]),
                 Y=array([[0]]),
@@ -150,11 +178,14 @@ class SAC_image_maxEnt_vec(SAC_image_maxEnt):
                 # Store the transition in memory
                 self.store_transition(z[env_ind].unsqueeze(0), s[env_ind].unsqueeze(0), a_all[env_ind].unsqueeze(0), r, s_.unsqueeze(0), done, info)
                 self.store_transition_online(z[env_ind].unsqueeze(0), s[env_ind].unsqueeze(0), a_all[env_ind].unsqueeze(0), r, s_.unsqueeze(0), done, info)
-                s[env_ind] = s_
+                # s[env_ind] = s_ #! why this is wrong?
 
                 # Resample z
                 if done:
                     z[env_ind] = self.latent_prior.sample().to(self.device)
+
+            # Update "prev" states
+            s = s_all # already reset if done
 
             # Train policies
             if self.cntUpdate >= minStepBeforeOptimize and \
@@ -225,7 +256,13 @@ class SAC_image_maxEnt_vec(SAC_image_maxEnt):
                 sample_y = np.random.uniform(y_range[0], y_range[1], (numRndTraj,1))
                 sample_theta = np.random.uniform(theta_range[0], theta_range[1], (numRndTraj,1))
                 sample_states = np.concatenate((sample_x, sample_y, sample_theta), axis=1)
+                
+                # Either use venv or a single env when GPU RAM is limited
                 results = venv.simulate_trajectories(policy,states=sample_states, endType=endType, latent_prior=self.latent_prior)
+                # results = env.simulate_trajectories(policy,
+                    # T=100, states=sample_states, 
+                    # endType=endType,  latent_prior=self.latent_prior)[1]
+
                 if self.mode == 'safety':
                     failure  = np.sum(results==-1)/ results.shape[0]
                     success  =  1 - failure

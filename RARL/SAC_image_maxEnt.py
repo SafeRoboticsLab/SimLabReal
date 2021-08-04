@@ -156,21 +156,20 @@ class SAC_image_maxEnt(SAC_image):
         print(" --- Warmup Buffer Ends")
 
 
+
     def unpack_batch(self, batch):
         # `non_final_mask` is used for environments that have next state to be None
-        # non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.s_)), dtype=torch.bool).to(self.device)
         non_final_mask = torch.tensor(
             tuple(map(lambda s: not s, batch.done)),
             dtype=torch.bool).view(-1).to(self.device)
+        # non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.s_)), dtype=torch.bool).to(self.device)
         # non_final_state_nxt = torch.FloatTensor([
             # s for s in batch.s_ if s is not None]).to(self.device)
-        non_final_state_nxt = torch.cat([
+        non_final_state_nxt = torch.FloatTensor([
             s for done, s in zip(batch.done, batch.s_) if not done]).to(self.device)
         latent = torch.cat(batch.z).to(self.device)  # stored as tensor
-        # state  = torch.FloatTensor(batch.s).to(self.device)
-        state  = torch.cat(batch.s).to(self.device)
-        # action = torch.FloatTensor(batch.a).to(self.device).view(-1, self.actionDim)
-        action = torch.cat(batch.a).to(self.device)
+        state  = torch.FloatTensor(batch.s).to(self.device)
+        action = torch.FloatTensor(batch.a).to(self.device)
         reward = torch.FloatTensor(batch.r).to(self.device)
 
         g_x = torch.FloatTensor(
@@ -181,12 +180,8 @@ class SAC_image_maxEnt(SAC_image):
             tuple(map(lambda s: not s['init'], batch.info)),
             dtype=torch.bool).view(-1).to(self.device)
         valid_mask = torch.logical_and(non_final_mask, non_init_mask)
-        # valid_state_next = torch.FloatTensor([
-            # s for s, t in zip(batch.s_, valid_mask) if t]).to(self.device)
-        valid_state_next = torch.cat([
+        valid_state_next = torch.FloatTensor([
             s for s, t in zip(batch.s_, valid_mask) if t]).to(self.device)
-        # non_init_mask = torch.tensor(
-            # [~info['init'] for info in batch.info], dtype=torch.bool).to(self.device).view(-1)
         return non_final_mask, non_final_state_nxt, latent, state, action, reward, g_x, l_x, valid_mask, valid_state_next
 
 
@@ -387,7 +382,7 @@ class SAC_image_maxEnt(SAC_image):
                 showBool=False, vmin=-1, vmax=1, numRndTraj=200,
                 storeModel=True, saveBest=False, outFolder='RA', verbose=True):
 
-        useVis = 0
+        useVis = 1
         if useVis:
             import visdom
             vis = visdom.Visdom(env='test_sac_maxent_dense_multi_obs_2', port=8098)
@@ -476,12 +471,12 @@ class SAC_image_maxEnt(SAC_image):
                 # Interact with env
                 s_, r, done, info = env.step(a)
                 info['init'] = False  # indicate using z
-                s_ = None if done else s_
+                # s_ = None if done else s_
                 epCost = max(info["g_x"], min(epCost, info["l_x"]))
 
                 # Store the transition in memory
-                self.store_transition(z, s, a, r, s_, info)
-                self.store_transition_online(z, s, a, r, s_, info)
+                self.store_transition(z, s, a, r, s_, done, info)
+                self.store_transition_online(z, s, a, r, s_, done, info)
                 s = s_
 
                 # Check after fixed number of gradient updates
