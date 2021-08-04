@@ -64,8 +64,6 @@ parser.add_argument("-lr",  "--learningRate",               help="learning rate"
     default=1e-3,   type=float)
 parser.add_argument("-lrd", "--learningRateDecay",          help="learning rate decay",
     default=0.9,    type=float)
-# parser.add_argument("-g",   "--gamma",                      help="contraction coeff.",
-#     default=0.99,   type=float)
 parser.add_argument("-al",  "--alpha",                      help="alpha",
     default=0.2,    type=float)
 parser.add_argument("-ep",  "--epsPeriod",                  help="period of eps update",
@@ -125,7 +123,7 @@ maxSteps = args.maxSteps
 updateTimes = args.updateTimes
 updatePeriod = int(maxSteps / updateTimes)
 
-fn = args.name
+fn = args.name + '-' + args.shieldType
 if args.fixed_init:
     fn = fn + '-fix'
 if args.showTime:
@@ -288,7 +286,7 @@ trainRecords, trainProgress, violationRecord = agent.learn(
     checkPeriod=args.checkPeriod, outFolder=outFolder,
     plotFigure=args.plotFigure, storeFigure=args.storeFigure)
 print('The number of safety violations: {:d}/{:d}'.format(
-    violationRecord[-1], len(violationRecord)+1))
+    violationRecord[-1], len(violationRecord)))
 # endregion
 
 
@@ -304,7 +302,7 @@ if args.plotFigure or args.storeFigure:
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
 
     data = trainProgress[0][:, 0]
-    ax = axes[1]
+    ax = axes[0]
     x = np.arange(data.shape[0]) + 1
     ax.plot(x, data, 'b-o')
     ax.set_xlabel('Index', fontsize=18)

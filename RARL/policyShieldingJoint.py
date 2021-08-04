@@ -3,10 +3,6 @@
 #          Allen Z. Ren (allen.ren@princeton.edu)
 
 import torch
-from torch.nn.functional import mse_loss
-from torch.optim import AdamW, Adam
-from torch.optim import lr_scheduler
-
 import numpy as np
 from collections import namedtuple
 import matplotlib.pyplot as plt
@@ -16,14 +12,12 @@ import time
 
 from .scheduler import StepLRMargin, StepLR
 from .ReplayMemory import ReplayMemory
-# from .utils import save_model
 from .SAC_mini import SAC_mini
 
 Transition = namedtuple('Transition', ['s', 'a', 'r', 's_', 'info'])
 
 
 class PolicyShieldingJoint(object):
-    # region: init
     def __init__(self, CONFIG, CONFIG_PERFORMANCE, CONFIG_BACKUP, verbose=True):
         """
         __init__: initialization.
@@ -37,8 +31,6 @@ class PolicyShieldingJoint(object):
         self.device = CONFIG.DEVICE
         self.BATCH_SIZE = CONFIG.BATCH_SIZE
         self.CONFIG = CONFIG
-        # self.CONFIG_PERFORMANCE = CONFIG_PERFORMANCE
-        # self.CONFIG_BACKUP = CONFIG_BACKUP
 
         print("= Constructing performance agent")
         self.performance = SAC_mini(
@@ -59,20 +51,6 @@ class PolicyShieldingJoint(object):
             period=CONFIG.RHO_PERIOD, decay=CONFIG.RHO_DECAY,
             endValue=CONFIG.RHO_END)
         self.RHO = self.RhoScheduler.get_variable()
-
-
-    def performanceValue(self, obs):
-        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
-        u = self.performance.actor(obsTensor).detach()
-        v = self.performance.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-        return v
-
-
-    def backupValue(self, obs):
-        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
-        u = self.backup.actor(obsTensor).detach()
-        v = self.backup.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
-        return v
 
 
     def initBuffer(self, env, ratio=1.0):
@@ -139,7 +117,6 @@ class PolicyShieldingJoint(object):
             print("starting from {:d} steps".format(self.cntStep))
 
         shieldType = shieldDict['Type']
-        # print(shieldType)
         assert (shieldType == 'value') or (shieldType == 'simulator'),\
             'Invalid Shielding Type!'
 
@@ -257,9 +234,9 @@ class PolicyShieldingJoint(object):
 
                 # Terminate early
                 if done:
-                    # g_x = env.safety_margin(env._state, return_boundary=False)
-                    # if g_x > 0:
-                    cntSafetyViolation += 1
+                    g_x = env.safety_margin(env._state, return_boundary=False)
+                    if g_x > 0:
+                        cntSafetyViolation += 1
                     violationRecord.append(cntSafetyViolation)
                     break
                 if t == (MAX_EP_STEPS-1):
@@ -267,7 +244,7 @@ class PolicyShieldingJoint(object):
 
             # Update epsilon, rho
             print('  - This episode has {} steps'.format(t))
-            print('  - Safety violations: {:d}'.format(cntSafetyViolation))
+            print('  - Safety violations so far: {:d}'.format(cntSafetyViolation))
             print('  - eps={:.2f}, rho={:.2f}'.format(self.EPS, self.RHO))
             self.EpsilonScheduler.step()
             self.EPS = self.EpsilonScheduler.get_variable()
@@ -284,10 +261,23 @@ class PolicyShieldingJoint(object):
         trainProgress[0] = np.stack( trainProgress[0], axis=0 )
         trainProgress[1] = np.stack( trainProgress[1], axis=0 )
         return trainRecords, trainProgress, violationRecord
-    # endregion
 
 
     # region: some utils functions
+    def performanceValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.performance.actor(obsTensor).detach()
+        v = self.performance.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
+    def backupValue(self, obs):
+        obsTensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
+        u = self.backup.actor(obsTensor).detach()
+        v = self.backup.critic(obsTensor, u)[0].cpu().detach().numpy()[0]
+        return v
+
+
     def store_transition(self, *args):
         self.memory.update(Transition(*args))
 
@@ -299,39 +289,21 @@ class PolicyShieldingJoint(object):
             self.saved = True
 
 
-    # def save(self, step, logs_path, agentType):
-    #     path_c = os.path.join(logs_path, agentType, 'critic')
-    #     path_a = os.path.join(logs_path, agentType, 'actor')
-    #     if agentType == 'backup':
-    #         save_model(self.backup.critic, step, path_c, 'critic', self.MAX_MODEL)
-    #         save_model(self.backup.actor,  step, path_a, 'actor',  self.MAX_MODEL)
-    #     elif agentType == 'performance':
-    #         save_model(self.performance.critic, step, path_c, 'critic', self.MAX_MODEL)
-    #         save_model(self.performance.actor,  step, path_a, 'actor',  self.MAX_MODEL)
-    #     if not self.saved:
-    #         config_path = os.path.join(logs_path, "CONFIG.pkl")
-    #         pickle.dump(self.CONFIG, open(config_path, "wb"))
-    #         config_path = os.path.join(logs_path, "CONFIG_PERFORMANCE.pkl")
-    #         pickle.dump(self.CONFIG_PERFORMANCE, open(config_path, "wb"))
-    #         config_path = os.path.join(logs_path, "CONFIG_BACKUP.pkl")
-    #         pickle.dump(self.CONFIG_BACKUP, open(config_path, "wb"))
-    #         self.saved = True
-
-
     def restore(self, step, logs_path, agentType):
         """
         restore
 
         Args:
             step (int): #updates trained.
-            logs_path (str): the path of the directory, under this folder there should
-                be critic/ and agent/ folders.
+            logs_path (str): the path of the directory, under this folder there
+                should be critic/ and agent/ folders.
             agentType (str): performance policy or backup policy.
         """
+        modelFolder = path_c = os.path.join(logs_path, agentType)
         path_c = os.path.join(
-            logs_path, agentType, 'critic', 'critic-{}.pth'.format(step))
+            modelFolder, 'critic', 'critic-{}.pth'.format(step))
         path_a  = os.path.join(
-            logs_path, agentType, 'actor',  'actor-{}.pth'.format(step))
+            modelFolder, 'actor',  'actor-{}.pth'.format(step))
         if agentType == 'backup':
             self.backup.critic.load_state_dict(
                 torch.load(path_c, map_location=self.device))
@@ -352,5 +324,6 @@ class PolicyShieldingJoint(object):
             self.performance.actor.load_state_dict(
                 torch.load(path_a, map_location=self.device))
             self.performance.actor.to(self.device)
-        print('  <= Restore model with {} updates from {}.'.format(step, logs_path))
+        print('  <= Restore {} with {} updates from {}.'.format(
+            agentType, step, modelFolder))
     # endregion

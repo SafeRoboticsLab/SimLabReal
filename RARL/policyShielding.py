@@ -390,8 +390,8 @@ class PolicyShielding(object):
         loss_pi, loss_entropy, loss_alpha = 0, 0, 0
         if timer % update_period == 0:
             loss_pi, loss_entropy, loss_alpha = self.update_actor(batch)
-            print('\r{:d}: (q, pi, ent, alpha) = ({:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}).'.format(
-                self.cntUpdate, loss_q, loss_pi, loss_entropy, loss_alpha), end=' ')
+            # print('\r{:d}: (q, pi, ent, alpha) = ({:3.5f}/{:3.5f}/{:3.5f}/{:3.5f}).'.format(
+            #     self.cntUpdate, loss_q, loss_pi, loss_entropy, loss_alpha), end=' ')
             self.update_target_networks()
 
         self.critic.eval()
@@ -436,7 +436,7 @@ class PolicyShielding(object):
         violationRecord = []
         checkPointSucc = 0.
         ep = 0
-        safetyViolationCnt = 0
+        cntSafetyViolation = 0
 
         if storeModel:
             modelFolder = os.path.join(outFolder, 'model')
@@ -577,13 +577,16 @@ class PolicyShielding(object):
 
                 # Terminate early
                 if done:
-                    # g_x = env.safety_margin(env._state, return_boundary=False)
-                    # if g_x > 0:
-                    safetyViolationCnt += 1
-                    violationRecord.append(safetyViolationCnt)
+                    g_x = env.safety_margin(env._state, return_boundary=False)
+                    if g_x > 0:
+                        cntSafetyViolation += 1
+                    violationRecord.append(cntSafetyViolation)
                     break
                 if t == (MAX_EP_STEPS-1):
-                    violationRecord.append(safetyViolationCnt)
+                    violationRecord.append(cntSafetyViolation)
+
+            print('  - This episode has {} steps'.format(t))
+            print('  - Safety violations so far: {:d}'.format(cntSafetyViolation))
 
         endLearning = time.time()
         timeInitBuffer = endInitBuffer - startInitBuffer

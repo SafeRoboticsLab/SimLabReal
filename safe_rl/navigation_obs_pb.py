@@ -139,17 +139,17 @@ class NavigationObsPBEnv(gym.Env):
         self._goal_loc =task.get('goal_loc',np.array([self.state_bound-0.2,0.]))
         self._goal_radius = task.get('goal_radius', 0.15)
         self._num_obs = task.get('num_obs', 5)
-        self._obs_loc  = task.get('obs_loc',np.array([[self.state_bound/2,-0.6],
-                                                     [self.state_bound/2, -0.3],
-                                                     [self.state_bound/2, 0],
-                                                     [self.state_bound/2, 0.3],
-                                                    [self.state_bound/2, 0.6]]))
+        self._obs_loc = task.get('obs_loc', np.array([[self.state_bound/2,-0.6],
+                                                      [self.state_bound/2, -0.3],
+                                                      [self.state_bound/2, 0],
+                                                      [self.state_bound/2, 0.3],
+                                                      [self.state_bound/2, 0.6]]))
         self._obs_radius = task.get('obs_radius', np.array([0.05, 0.05, 0.05, 0.05, 0.05]))  # was 0.3 for single obstable
         self._obs_rgba = task.get('obs_rgba',np.array([[1.0, 0.0, 0.0, 1.0],
-                                                     [1.0, 0.0, 0.0, 1.0],
-                                                     [1.0, 0.0, 0.0, 1.0],
-                                                     [1.0, 0.0, 0.0, 1.0],
-                                                     [1.0, 0.0, 0.0, 1.0]]))
+                                                       [1.0, 0.0, 0.0, 1.0],
+                                                       [1.0, 0.0, 0.0, 1.0],
+                                                       [1.0, 0.0, 0.0, 1.0],
+                                                       [1.0, 0.0, 0.0, 1.0]]))
 
         # Set up PyBullet parameters
         self._renders = render
