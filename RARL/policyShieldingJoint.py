@@ -3,10 +3,6 @@
 #          Allen Z. Ren (allen.ren@princeton.edu)
 
 import torch
-from torch.nn.functional import mse_loss
-from torch.optim import AdamW, Adam
-from torch.optim import lr_scheduler
-
 import numpy as np
 from collections import namedtuple
 import matplotlib.pyplot as plt
@@ -16,7 +12,6 @@ import time
 
 from .scheduler import StepLRMargin, StepLR
 from .ReplayMemory import ReplayMemory
-# from .utils import save_model
 from .SAC_mini import SAC_mini
 
 Transition = namedtuple('Transition', ['s', 'a', 'r', 's_', 'info'])
@@ -36,8 +31,6 @@ class PolicyShieldingJoint(object):
         self.device = CONFIG.DEVICE
         self.BATCH_SIZE = CONFIG.BATCH_SIZE
         self.CONFIG = CONFIG
-        # self.CONFIG_PERFORMANCE = CONFIG_PERFORMANCE
-        # self.CONFIG_BACKUP = CONFIG_BACKUP
 
         print("= Constructing performance agent")
         self.performance = SAC_mini(
@@ -124,7 +117,6 @@ class PolicyShieldingJoint(object):
             print("starting from {:d} steps".format(self.cntStep))
 
         shieldType = shieldDict['Type']
-        # print(shieldType)
         assert (shieldType == 'value') or (shieldType == 'simulator'),\
             'Invalid Shielding Type!'
 
@@ -295,25 +287,6 @@ class PolicyShieldingJoint(object):
             config_path = os.path.join(logs_path, "CONFIG.pkl")
             pickle.dump(self.CONFIG, open(config_path, "wb"))
             self.saved = True
-
-
-    # def save(self, step, logs_path, agentType):
-    #     path_c = os.path.join(logs_path, agentType, 'critic')
-    #     path_a = os.path.join(logs_path, agentType, 'actor')
-    #     if agentType == 'backup':
-    #         save_model(self.backup.critic, step, path_c, 'critic', self.MAX_MODEL)
-    #         save_model(self.backup.actor,  step, path_a, 'actor',  self.MAX_MODEL)
-    #     elif agentType == 'performance':
-    #         save_model(self.performance.critic, step, path_c, 'critic', self.MAX_MODEL)
-    #         save_model(self.performance.actor,  step, path_a, 'actor',  self.MAX_MODEL)
-    #     if not self.saved:
-    #         config_path = os.path.join(logs_path, "CONFIG.pkl")
-    #         pickle.dump(self.CONFIG, open(config_path, "wb"))
-    #         config_path = os.path.join(logs_path, "CONFIG_PERFORMANCE.pkl")
-    #         pickle.dump(self.CONFIG_PERFORMANCE, open(config_path, "wb"))
-    #         config_path = os.path.join(logs_path, "CONFIG_BACKUP.pkl")
-    #         pickle.dump(self.CONFIG_BACKUP, open(config_path, "wb"))
-    #         self.saved = True
 
 
     def restore(self, step, logs_path, agentType):
