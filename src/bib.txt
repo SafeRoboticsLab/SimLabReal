@@ -1,0 +1,6 @@
+@inproceedings{ren22atla,
+  title={Leveraging Language for Accelerated Learning of Tool Manipulation},
+  author={Ren, Allen Z. and Govil, Bharat and Yang, Tsung-Yen and Narasimhan, Karthik and Majumdar, Anirudha},
+  booktitle={Proceedings of the Conference on Robot Learning (CoRL)},
+  year={2022},
+}

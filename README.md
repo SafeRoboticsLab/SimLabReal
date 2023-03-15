@@ -1,14 +1,3 @@
-# Generalization Guarantees for Safe RL with Shielding
-#### Requirements
-* PyTorch
-* PyBullet
-* gym
+# ATLA
 
-## Usage
-export PYTHONPATH=/home/allen/bullet3/build_cmake/examples/pybullet
-
-#### Training
-
-#### Testing
-
-## References
+On M1 Mac: `arch -arch x86_64 bundle exec jekyll serve`
