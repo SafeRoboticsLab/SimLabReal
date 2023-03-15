@@ -1,6 +1,11 @@
-@inproceedings{ren22atla,
-  title={Leveraging Language for Accelerated Learning of Tool Manipulation},
-  author={Ren, Allen Z. and Govil, Bharat and Yang, Tsung-Yen and Narasimhan, Karthik and Majumdar, Anirudha},
-  booktitle={Proceedings of the Conference on Robot Learning (CoRL)},
-  year={2022},
+@article{hsuren2022slr,
+    title = {Sim-to-Lab-to-Real: Safe Reinforcement Learning with Shielding and Generalization Guarantees},
+    journal = {Artificial Intelligence},
+    pages = {103811},
+    year = {2022},
+    issn = {0004-3702},
+    doi = {https://doi.org/10.1016/j.artint.2022.103811},
+    url = {https://www.sciencedirect.com/science/article/pii/S0004370222001515},
+    author = {Kai-Chieh Hsu and Allen Z. Ren and Duy P. Nguyen and Anirudha Majumdar and Jaime F. Fisac},
+    keywords = {Reinforcement Learning, Sim-to-Real Transfer, Safety Analysis, Generalization}
 }
