@@ -70,9 +70,9 @@ categories: projects
   <svg class="svg-inline--fa fa-youtube fa-w-18" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="youtube" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" data-fa-i2svg=""><path fill="currentColor" d="M549.655 124.083c-6.281-23.65-24.787-42.276-48.284-48.597C458.781 64 288 64 288 64S117.22 64 74.629 75.486c-23.497 6.322-42.003 24.947-48.284 48.597-11.412 42.867-11.412 132.305-11.412 132.305s0 89.438 11.412 132.305c6.281 23.65 24.787 41.5 48.284 47.821C117.22 448 288 448 288 448s170.78 0 213.371-11.486c23.497-6.321 42.003-24.171 48.284-47.821 11.412-42.867 11.412-132.305 11.412-132.305s0-89.438-11.412-132.305zm-317.51 213.508V175.185l142.739 81.205-142.739 81.201z"></path></svg>
   </span> Video</a> | -->
 
-  <!-- <a href="https://github.com/UT-Austin-RPL/VIOLA"><span class="icon" style="height: 1.3rem;width: 1.3rem;">
-    <svg class="svg-inline--fa fa-github fa-w-16" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="github" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512" data-fa-i2svg=""><path fill="currentColor" d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"></path></svg> -->
-  <!-- </span> Code</a> |  -->
+  <a href="https://github.com/SafeRoboticsLab/SimLabReal"><span class="icon" style="height: 1.3rem;width: 1.3rem;">
+    <svg class="svg-inline--fa fa-github fa-w-16" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="github" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512" data-fa-i2svg=""><path fill="currentColor" d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"></path></svg>
+  </span> Code</a> | 
 
   <a href="./src/bib.txt"><span class="icon" style="height: 1.5rem;width: 1.5rem;">
       <svg class="svg-inline--fa fa-bibtex fa-w-16" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="bibtex" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" data-fa-i2svg=""><path fill="currentColor" d="m 29.09375,11.234375 c -3.183804,0 -5.71875,2.566196 -5.71875,5.75 l 0,94.031255 c 0,3.1838 2.534946,5.75 5.71875,5.75 l 69.8125,0 c 3.1838,0 5.71875,-2.5662 5.71875,-5.75 l 0,-70.656255 -21.03125,0 c -4.306108,0 -8.0625,-3.141109 -8.0625,-7.3125 l 0,-21.8125 -46.4375,0 z m 50.4375,0 0,21.8125 c 0,1.714122 1.631968,3.3125 4.0625,3.3125 l 21.03125,0 -25.09375,-25.125 z m -46.1875,51.3125 19.03125,0 0.25,5.46875 -0.625,0 c -0.126107,-0.962831 -0.313482,-1.64983 -0.53125,-2.0625 -0.355356,-0.664804 -0.841468,-1.159242 -1.4375,-1.46875 -0.584605,-0.320929 -1.349667,-0.499979 -2.3125,-0.5 l -3.28125,0 0,17.84375 c -1.2e-5,1.432815 0.15925,2.300914 0.46875,2.65625 0.435561,0.481426 1.094449,0.718751 2,0.71875 l 0.8125,0 0,0.625 -9.875,0 0,-0.625 0.8125,0 c 0.985768,10e-7 1.712342,-0.278949 2.125,-0.875 0.252166,-0.366798 0.343741,-1.193273 0.34375,-2.5 l 0,-17.84375 -2.8125,0 c -1.088943,2.1e-5 -1.854004,0.08955 -2.3125,0.25 -0.596054,0.217809 -1.107139,0.631046 -1.53125,1.25 -0.424114,0.618995 -0.66977,1.476719 -0.75,2.53125 l -0.65625,0 0.28125,-5.46875 z m 37.3125,0 10.78125,0 0,0.625 c -0.91701,0.03441 -1.562385,0.173884 -1.90625,0.4375 -0.332422,0.263659 -0.500009,0.554071 -0.5,0.875 -9e-6,0.424133 0.293541,1.061183 0.84375,1.875 l 3.5625,5.34375 4.15625,-5.25 c 0.481406,-0.618955 0.771818,-1.051979 0.875,-1.28125 0.11461,-0.229229 0.187481,-0.446767 0.1875,-0.6875 -1.9e-5,-0.240691 -0.112469,-0.472828 -0.25,-0.65625 -0.171956,-0.24069 -0.361381,-0.40828 -0.625,-0.5 -0.263655,-0.10314 -0.830966,-0.14476 -1.65625,-0.15625 l 0,-0.625 8.28125,0 0,0.625 c -0.653386,0.03441 -1.181122,0.140585 -1.59375,0.3125 -0.618997,0.263659 -1.171709,0.615484 -1.6875,1.0625 -0.515833,0.447058 -1.278845,1.265207 -2.21875,2.46875 l -4.625,5.90625 5.03125,7.46875 c 1.386942,2.063254 2.397654,3.387302 3.0625,3.9375 0.676265,0.538738 1.530851,0.81769 2.5625,0.875 l 0,0.625 -10,0 0,-0.625 c 0.66481,-0.01146 1.147784,-0.06141 1.46875,-0.1875 0.240697,-0.103161 0.44472,-0.262423 0.59375,-0.46875 0.16046,-0.217786 0.249982,-0.438461 0.25,-0.65625 -1.8e-5,-0.263636 -0.05311,-0.54886 -0.15625,-0.8125 -0.08025,-0.19486 -0.418566,-0.686159 -0.96875,-1.5 l -3.9375,-5.96875 -4.875,6.25 c -0.515819,0.664828 -0.834344,1.114502 -0.9375,1.34375 -0.10316,0.217789 -0.156256,0.44679 -0.15625,0.6875 -6e-6,0.366801 0.159256,0.665539 0.46875,0.90625 0.30948,0.240713 0.910092,0.37186 1.78125,0.40625 l 0,0.625 -8.28125,0 0,-0.625 c 0.584586,-0.05731 1.075886,-0.160349 1.5,-0.34375 0.710673,-0.298024 1.389347,-0.714398 2.03125,-1.21875 0.641896,-0.504347 1.393444,-1.26941 2.21875,-2.3125 l 5.5,-6.9375 -4.59375,-6.75 c -1.249419,-1.822518 -2.316354,-3.000816 -3.1875,-3.5625 -0.871152,-0.573103 -1.865215,-0.87184 -3,-0.90625 l 0,-0.625 z m -19.3125,7.34375 17.96875,0 0.25,5.09375 -0.6875,0 c -0.240731,-1.226469 -0.514493,-2.07273 -0.8125,-2.53125 -0.28658,-0.458478 -0.708141,-0.821767 -1.28125,-1.0625 -0.458515,-0.17192 -1.279802,-0.249978 -2.4375,-0.25 l -6.375,0 0,9.21875 5.125,0 c 1.329636,1.3e-5 2.209198,-0.192549 2.65625,-0.59375 0.596035,-0.52726 0.93121,-1.451586 1,-2.78125 l 0.625,0 0,8.125 -0.625,0 c -0.160491,-1.134778 -0.30829,-1.897791 -0.46875,-2.21875 -0.206341,-0.401177 -0.561302,-0.708239 -1.03125,-0.9375 -0.469976,-0.229239 -1.181951,-0.343739 -2.15625,-0.34375 l -5.125,0 0,7.6875 c -7e-6,1.031628 0.0333,1.677002 0.125,1.90625 0.09169,0.217789 0.239493,0.393702 0.46875,0.53125 0.229242,0.12609 0.701842,0.187501 1.34375,0.1875 l 3.9375,0 c 1.318173,10e-7 2.278935,-0.09785 2.875,-0.28125 0.596034,-0.183399 1.137283,-0.55501 1.6875,-1.09375 0.710657,-0.710672 1.473668,-1.754683 2.21875,-3.1875 l 0.6875,0 -2,5.8125 -17.96875,0 0,-0.625 0.8125,0 c 0.550198,0 1.069611,-0.111362 1.5625,-0.375 0.366797,-0.183395 0.592659,-0.476948 0.71875,-0.84375 0.13755,-0.366798 0.218745,-1.11521 0.21875,-2.25 l 0,-15.15625 c -5e-6,-1.478642 -0.139479,-2.374854 -0.4375,-2.71875 -0.412653,-0.458478 -1.099652,-0.687478 -2.0625,-0.6875 l -0.8125,0 0,-0.625 z"></path></svg>
@@ -82,26 +82,18 @@ categories: projects
  <!-- <center><p><span style="font-size:20px;">Conference on Robot Learning (CoRL), 2022</span></p></center> -->
 
   <br>
-
-  <!-- <table border="0" cellspacing="10" cellpadding="0" align="center">
-    <tbody><tr><td align="center" valign="middle">
-      <a href="./src/all.gif"><img src="./src/all.gif" style="width:80%"></a>
-    </td></tr></tbody>
-  </table> -->
   <table border="0" cellspacing="10" cellpadding="0" align="center"> 
-    <tbody><tr>  <td align="center" valign="middle">
-      <video muted="" autoplay="" loop="" width="88%">
-          <source src="src/all-real.mp4" type="src/mp4">
-        </video>
-    </td></tr>
-  </tbody></table>
+    <tbody><tr><td align="center" valign="middle">
+      <video muted="" autoplay="" loop="" width="95%">
+          <source src="src/all-real.mp4">
+      </video>
+    </td></tr></tbody>
+  </table>
 
   <p>
     <div width="400"><p>
       <table align=center width=600px><tr><td><p align="justify" width="20%">
       We propose Sim-to-Lab-Real, a framework that combines Hamilton-Jacobi reachability analysis and the PAC-Bayes Control framework to improve safety of robots during training and real-world deployment, and provide generalization guarantees on robots’ performance and safety in real environments. 
-      <!-- <br><br> -->
-      <!-- Robust and generalized tool manipulation requires an understanding of the properties and affordances of different tools. We investigate whether linguistic information about a tool (e.g., its geometry, common uses) can help control policies adapt faster to new tools for a given task. We obtain diverse descriptions of various tools in natural language and use pre-trained language models to generate their feature representations. We then perform language-conditioned meta-learning to learn policies that can efficiently adapt to new tools given their corresponding text descriptions. Our results demonstrate that combining linguistic information and meta-learning significantly accelerates tool learning in several manipulation tasks including pushing, lifting, sweeping, and hammering. -->
       </p></td></tr></table></p>
     </div>
   </p>
@@ -123,63 +115,65 @@ categories: projects
 
   <table border="0" cellspacing="10" cellpadding="0" align="center">
     <tbody><tr><td align="center" valign="middle">
-      <a href="./src/overview.png"><img src="./src/overview.png" style="width:80%"></a>
+      <a href="./src/overview.png"><img src="./src/overview.png" style="width:85%"></a>
     </td></tr></tbody>
   </table>
-
-  <table align=center width=800px>
-    <tr><td><p align="justify" width="20%">
-      ATLA consists of two phases. At meta-training time, the metalearner updates a base-learner that quickly fine-tunes a manipulation policy; this fine-tuning process is conditioned on the LLM representations corresponding to the language descriptions of each tool. At test time, the base-learner adapts to a new tool using its language descriptions and interactions with it.
-    </p></td></tr>
-  </table>
-  <br>
-
-  <table border="0" cellspacing="10" cellpadding="0" align="center">
-    <tbody><tr><td align="center" valign="middle">
-      <a href="./src/method.png"><img src="./src/method.png" style="width:80%;"></a>
-    </td></tr></tbody>
-  </table>
-
-  <table align=center width=800px>
-    <tr><td><p align="justify" width="20%">
-      At training time, first, we prompt OpenAI GPT-3 to obtain a diverse set of language descriptions of the tool. Then for each episode collected, we sample a language description randomly from the set, which is then fed into a pre-trained BERT model to obtain the representation. The language head further distills the language information. We concatenate the representations from the language head and the image encoder, and then the features are shared by the critic head and the actor head. We train the language-condtioned policy using off-policy RL algorithm.
-    </p></td></tr>
-  </table>
-  <br>
 
   <hr>  <!-- break line -->
 
-  <h1 align="center">Experiment Results</h1>
-
-  <table border="0" cellspacing="10" cellpadding="0" align="center">
+  <table align=center width=800px>
+    <h1 align="center">Comparison with Other Methods</h1>
+    <tr><td><p align="justify" width="20%">
+      Our methods employs a dual-policy setup with reachability safety critic and shielding, which we demonstrate superior safety training and testing compared to using single-policy setup or risk-based safety critic or reward penalty. We also provide tight generalization guarantees to unseen environments.
+    </p></td></tr>
     <tbody><tr><td align="center" valign="middle">
-      <a href="./src/adaptation-curves.png"><img src="./src/adaptation-curves.png" style="width:100%"></a>
+      <a href="./src/method-comparison.png"><img src="./src/method-comparison.png" style="width:80%"></a>
     </td></tr></tbody>
   </table>
 
-  <table border="0" cellspacing="10" cellpadding="0" align="center">
-    <tbody><tr><td align="center">
-      <p align="justify" width="20%">
-        Through a few iterations of adaptation at test time, ATLA-LA generally outperforms AT (ATLA without language information) and SAC-LA (ATLA without meta-learning) when using different tools for the four tasks. Adaptaion curves of SAC-LA tend to stagnate or fluctuate while those of ATLA tend to rise steadily. This indicates meta-learning trains the policy to better adapt to new tools after training.
-      </p>
-    </td></tr></tbody>
-  </table>
-
-  <table border="0" cellspacing="10" cellpadding="0" align="center">
+  <table align=center width=800px>
+    <h1 align="center">Reachability vs. Discounted Risk</h1>
+    <tr><td><p align="justify" width="20%">
+      We compare our learned safety critic with those learned with SQRL [Srinivasan'20] and Recovery RL [Thananjeyan'21] that use sparse (binary) safety indicators. Reachability RL enables the safe critic to learn from near failure with dense signals. Thus, it recovers a thicker unsafe set and significantly reduces number of safety violations during Lab training and Real deployment.
+    </p></td></tr>
     <tbody><tr><td align="center" valign="middle">
-      <a href="./src/ablation.png"><img src="./src/ablation.png" style="width:60%"></a>
+      <a href="./src/critic-comparison.png"><img src="./src/critic-comparison.png" style="width:80%"></a>
     </td></tr></tbody>
   </table>
 
-  <table border="0" cellspacing="10" cellpadding="0" align="center">
-    <tbody><tr><td align="center">
-      <p align="justify" width="20%">
-        (a) Language descriptions of a crowbar often contain phrases including “long and thin bar”, “curved”, “hook”, “used to leverage”, and “used to pry open things”. Withthe descriptions, ATLA (orange curve) enables the policy to adapt quickly to this tool unseen during meta-training — the policy learns to use the curved hook to better steer the cylinder towards the target. As a comparison, we replace the descriptions with only the sentence “A crowbar is a long and thin bar,” and the policy (green curve) does not adapt as well. (b) One common feature among tools is the handle. While ATLA learns to grasp at the handle of a trowel (top), when we remove “handle” from all the descriptions, the robot fails to grip firmly on the handle and loses the grip eventually (bottom).
-      </p>
+  <table align=center width=800px>
+    <h1 align="center">Safety-Ensured Policy Distribution</h1>
+    <tr><td><p align="justify" width="20%">
+      We train a dual policy, performance (\pi^p) and backup (safety) policy (\pi^b), that is also conditioned on latent variables sampled from a distribution. As the performance policy guides the robot towards the goal, the backup policy intervenes minimally only when the safety critic deems the robot near danger. With a distribution of policies parameterized by the latent variables, the robot exhibits diverse trajectories around obstacles.
+    </p></td></tr>
+    <tbody><tr><td align="center" valign="middle">
+      <a href="./src/trajectories.png"><img src="./src/trajectories.png" style="width:80%"></a>
     </td></tr></tbody>
   </table>
 
-  <hr> <!-- break line -->
+  <table align=center width=800px>
+    <h1 align="center">Shielding in Real Deployment</h1>
+    <tr><td><p align="justify" width="20%">
+      We test the dual policy in 10 different real indoor space including one shown on the left. The colored trajectory indicates the safety critic value (red for higher, blue for lower) at the locations. When the value exceeds the threshold, shielding activates and the backup policy (green arrow) overrides the performance policy (red arrow) to steer the robot away from obstacles.
+    </p></td></tr>
+    <tbody><tr><td align="center" valign="middle">
+      <a href="./src/real-kitchen.png"><img src="./src/real-kitchen.png" style="width:80%"></a>
+    </td></tr></tbody>
+  </table>
+
+  <table align=center width=800px>
+    <h1 align="center">Physical Experiments with Robot Trajectories</h1>
+    <tr><td><p align="justify" width="20%">
+      We run the policy three times in each environment by sampling different latent variables from the posterior distribution. The three numbers in images indicates success/unfinished/failure split. The top images show the RGB observation input used for the robot (no depth information used).
+    </p></td></tr>
+    <tbody><tr><td align="center" valign="middle">
+      <a href="./src/all-trajectories.png"><img src="./src/all-trajectories.png" style="width:80%"></a>
+    </td></tr></tbody>
+  </table>
+
+  <br>
+
+  <hr>  <!-- break line -->
 
   <h1 align="center">Acknowledgements</h1>
 
