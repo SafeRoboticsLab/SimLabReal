@@ -43,11 +43,11 @@ categories: projects
       <a href="https://kaichiehhsu.github.io/">Kai-Chieh Hsu*</a>&nbsp;&nbsp;&nbsp;
       <a href="https://allenzren.github.io/">Allen Z. Ren*</a>&nbsp;&nbsp;&nbsp;
       <a href="https://www.linkedin.com/in/buzinguyen/">Duy Phuong Nguyen</a>&nbsp;&nbsp;&nbsp; 
-      <a href="https://irom-lab.princeton.edu/majumdar/">Anirudha Majumdar^</a>&nbsp;&nbsp;&nbsp;
-      <a href="https://ece.princeton.edu/people/jaime-fernandez-fisac">Jaime F. Fisac^</a>&nbsp;&nbsp;&nbsp;
+      <a href="https://irom-lab.princeton.edu/majumdar/">Anirudha Majumdar**</a>&nbsp;&nbsp;&nbsp;
+      <a href="https://ece.princeton.edu/people/jaime-fernandez-fisac">Jaime F. Fisac**</a>&nbsp;&nbsp;&nbsp;
       <!-- <sup>1</sup> -->
     </h2>
-    <h3>*equal contribution in alphabetical order&nbsp;&nbsp;&nbsp; ^equal advising</h3>
+    <h3>*equal contribution in alphabetical order&nbsp;&nbsp;&nbsp; **equal advising</h3>
     <h2>Princeton University&nbsp;&nbsp;&nbsp; Artificial Intelligence Journal (AIJ), October 2022</h2>
   </center>
   <center>
@@ -60,7 +60,7 @@ categories: projects
     </span>
     Journal</a> | 
 
-  <a href="https://sites.google.com/princeton.edu/sim-to-lab-to-real/home">
+  <a href="https://arxiv.org/abs/2201.08355">
     <span class="icon">
       <svg class="svg-inline--fa fa-file-pdf fa-w-12" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="file-pdf" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" data-fa-i2svg=""><path fill="currentColor" d="M181.9 256.1c-5-16-4.9-46.9-2-46.9 8.4 0 7.6 36.9 2 46.9zm-1.7 47.2c-7.7 20.2-17.3 43.3-28.4 62.7 18.3-7 39-17.2 62.9-21.9-12.7-9.6-24.9-23.4-34.5-40.8zM86.1 428.1c0 .8 13.2-5.4 34.9-40.2-6.7 6.3-29.1 24.5-34.9 40.2zM248 160h136v328c0 13.3-10.7 24-24 24H24c-13.3 0-24-10.7-24-24V24C0 10.7 10.7 0 24 0h200v136c0 13.2 10.8 24 24 24zm-8 171.8c-20-12.2-33.3-29-42.7-53.8 4.5-18.5 11.6-46.6 6.2-64.2-4.7-29.4-42.4-26.5-47.8-6.8-5 18.3-.4 44.1 8.1 77-11.6 27.6-28.7 64.6-40.8 85.8-.1 0-.1.1-.2.1-27.1 13.9-73.6 44.5-54.5 68 5.6 6.9 16 10 21.5 10 17.9 0 35.7-18 61.1-61.8 25.8-8.5 54.1-19.1 79-23.2 21.7 11.8 47.1 19.5 64 19.5 29.2 0 31.2-32 19.7-43.4-13.9-13.6-54.3-9.7-73.6-7.2zM377 105L279 7c-4.5-4.5-10.6-7-17-7h-6v128h128v-6.1c0-6.3-2.5-12.4-7-16.9zm-74.1 255.3c4.1-2.7-2.5-11.9-42.8-9 37.1 15.8 42.8 9 42.8 9z"></path></svg>
     </span>
@@ -82,16 +82,24 @@ categories: projects
  <!-- <center><p><span style="font-size:20px;">Conference on Robot Learning (CoRL), 2022</span></p></center> -->
 
   <br>
-  <table border="0" cellspacing="10" cellpadding="0" align="center">
+
+  <!-- <table border="0" cellspacing="10" cellpadding="0" align="center">
     <tbody><tr><td align="center" valign="middle">
-      <a href="./src/all-sim.gif"><img src="./src/all-sim.gif" style="width:80%"></a>
+      <a href="./src/all.gif"><img src="./src/all.gif" style="width:80%"></a>
     </td></tr></tbody>
-  </table>
+  </table> -->
+  <table border="0" cellspacing="10" cellpadding="0" align="center"> 
+    <tbody><tr>  <td align="center" valign="middle">
+      <video muted="" autoplay="" loop="" width="88%">
+          <source src="src/all-real.mp4" type="src/mp4">
+        </video>
+    </td></tr>
+  </tbody></table>
 
   <p>
     <div width="400"><p>
       <table align=center width=600px><tr><td><p align="justify" width="20%">
-      We propose ATLA — Accelerated Learning of Tool Manipulation with LAnguage — a meta-learning framework leveraging large language models (LLMs) to accelerate learning of tool manipulation skills. 
+      We propose Sim-to-Lab-Real, a framework that combines Hamilton-Jacobi reachability analysis and the PAC-Bayes Control framework to improve safety of robots during training and real-world deployment, and provide generalization guarantees on robots’ performance and safety in real environments. 
       <!-- <br><br> -->
       <!-- Robust and generalized tool manipulation requires an understanding of the properties and affordances of different tools. We investigate whether linguistic information about a tool (e.g., its geometry, common uses) can help control policies adapt faster to new tools for a given task. We obtain diverse descriptions of various tools in natural language and use pre-trained language models to generate their feature representations. We then perform language-conditioned meta-learning to learn policies that can efficiently adapt to new tools given their corresponding text descriptions. Our results demonstrate that combining linguistic information and meta-learning significantly accelerates tool learning in several manipulation tasks including pushing, lifting, sweeping, and hammering. -->
       </p></td></tr></table></p>
@@ -104,16 +112,18 @@ categories: projects
 
   <table align=center width=800px>
     <tr><td><p align="justify" width="20%">
-      Natural language descriptions of tools contain information about the affordances of the tools, how to exploit these affordances for a given task, and how perceptual features of tools (e.g., their visual appearance and geometry) relate to their affordances. Moreover, language can help capture the shared structure of tools and their affordances. Thus, if one has previously learned to use a set of tools (with corresponding language descriptions), a description of a new tool can help to exploit this prior knowledge in order to accelerate learning.
-      <br><br>
-      ATLA utilizes LLMs to generate such language descriptions for tools and to obtain the corresponding feature representations for policy learning.
+    We leverage an intermediate training stage, Lab, between Sim and Real to safely bridge the Sim-to-Real gap in ego-vision indoor navigation tasks. Compared to Sim training, Lab training is (1) more realistic and (2) more safety-critical.
+    <br><br>
+    For safe Sim-to-Lab transfer, we learn a safety critic with Hamilton-Jacobi reachability RL and apply a supervisory control scheme to shield unsafe actions during exploration.
+    <br><br>
+    For safe Lab-to-Real transfer, we use the Probably Approximately Correct (PAC)-Bayes Control framework to provide lower bounds (70-90%) on the expected performance and safety of policies in unseen environments.
     </p></td></tr>
   </table>
   <br>
 
   <table border="0" cellspacing="10" cellpadding="0" align="center">
     <tbody><tr><td align="center" valign="middle">
-      <a href="./src/anchor.png"><img src="./src/anchor.png" style="width:80%"></a>
+      <a href="./src/overview.png"><img src="./src/overview.png" style="width:80%"></a>
     </td></tr></tbody>
   </table>
 
@@ -169,52 +179,13 @@ categories: projects
     </td></tr></tbody>
   </table>
 
-  <!-- <h2 align="center">Qualitative Real Robot Demo</h2>
-  <br> -->
-
-  <!-- <table border="0" cellspacing="10" cellpadding="0">
-    <tbody>
-    <tr> 
-      <video width="450" height="253" controls="" muted="" autoplay="" loop="" frameborder="5">
-        <source src="videos/dining two policies.mp4" type="video/mp4">
-      </video>
-      <video width="450" height="253" controls="" muted="" autoplay="" loop="" frameborder="5">
-        <source src="videos/make two coffee.mp4" type="video/mp4">
-      </video>
-    </tr>
-    <tr>
-      <td align="center" valign="middle"><p>
-      We can sequentially execute <tt>Dining-PlateFork</tt> and <tt>Dining-Bowl</tt> policies.
-      </p></td> 
-      <td align="center" valign="middle"><p>
-      This video shows that the learned policies making two coffees in a row.
-      </p></td> 
-    </tr>
-    </tbody>
-  </table>
-  <br> -->
-
-  <!-- <h2 align="center">A no-cut video of <b>10</b> <tt>Make-Coffee</tt> rollouts</h2>
-  <table border="0" cellspacing="10"
-  cellpadding="0"><tr><td>
-  <p> </p></td></tr></table>
-    <table border="0" cellspacing="10" cellpadding="0"
-    align="center">
-    <tbody>
-    <tr>
-  <iframe width="750" height="421" src="https://www.youtube.com/embed/DVFSPSa7GsQ?autoplay=1&mute=1&loop=1&playlist=DVFSPSa7GsQ" autoplay="true" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-  </tr>
-  </tbody>
-  </table> -->
-  <!-- <br> -->
-
   <hr> <!-- break line -->
 
   <h1 align="center">Acknowledgements</h1>
 
   <table align=center width=800px>
   <tr><td><p>
-  The authors were partially supported by the Toyota Research Institute (TRI), the NSF CAREER Award [#2044149], the Office of Naval Research [N00014-21-1-2803, N00014-18-1-2873], and the School of Engineering and Applied Science at Princeton University through the generosity of William Addy ’82. This article solely reflects th opinions and conclusions of its authors and not NSF, ONR, Princeton SEAS, TRI or any other Toyota entity.
+  Allen Z. Ren and Anirudha Majumdar were supported by the Toyota Research Institute (TRI), the NSF CAREER award [2044149], the Office of Naval Research [N00014-21-1-2803], and the School of Engineering and Applied Science at Princeton University through the generosity of William Addy ’82. This article solely reflects the opinions and conclusions of its authors and not ONR, NSF, TRI or any other Toyota entity. We would like to thank Zixu Zhang for his valuable advice on the setup of the physical experiments.
   </p></td></tr>
   </table>
   <br><br>
