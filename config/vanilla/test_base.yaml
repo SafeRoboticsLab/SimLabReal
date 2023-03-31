@@ -1,0 +1,79 @@
+# setting: vanilla-dynamics
+# method: Base, test
+env:
+  venv_seed: 0
+  name: vanilla
+  dataset: /home/kai/Desktop/slr/data/ds/vanilla/dynamics/test.pkl
+  action_dim: 2
+  action_mag: 1.0
+  use_append: true
+  obs_buffer: 0.0
+  g_x_fail: 1.0
+  terminal_type: const
+  img_h: 48
+  img_w: 48
+  max_step_train: 200
+  max_step_eval: 200
+  obs_channel: 3
+  fixed_init: true
+  sparse_reward: false
+  num_env_train: 2000
+  reward_type: task
+  reward_goal: 10
+  reward_wander: 2
+  reward_obs: -10
+  gui: true
+  gui_task_idx: 0
+
+agent:
+  num_cpus: 8
+  num_gpu_envs: null
+  cpu_offset: 0
+  seed: 0
+  device: cuda:0
+  has_backup: false
+
+performance:
+  train:
+    eval: true
+    device: cuda:0
+    mode: performance
+    has_latent: false
+    has_actor: true
+    # latent
+    latent_dim: 0
+    latent_dim_cnn: 0
+    #
+    actor_path: /home/kai/Desktop/slr/checkpoint/vanilla/base/actor.pth
+    critic_path: null
+  arch:
+    critic_has_act_ind: false
+    act_ind:
+      - 1
+    activation:
+      actor: ReLU
+      critic: ReLU
+    kernel_size:
+    - 5
+    - 3
+    - 3
+    stride:
+    - 2
+    - 2
+    - 2
+    n_channel:
+    - 8
+    - 16
+    - 32
+    mlp_dim:
+      actor:
+      - 128
+      - 128
+      critic:
+      - 128
+      - 128
+    append_dim: 2
+    use_bn: false
+    use_ln: true
+    use_sm: false
+    use_spec_disc: true

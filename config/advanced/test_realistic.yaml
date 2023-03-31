@@ -1,0 +1,174 @@
+
+# Please update env.dataset to dataset path, env.mesh_parent_path to house folder
+
+env:
+  venv_seed: 42
+  name: advanced-realistic
+  dataset: data/advanced_realistic_ps_test_1000.pkl
+  action_dim: 2
+  action_mag: 1.0
+  use_append: true
+  obs_buffer: 0.25
+  g_x_fail: 0.25
+  terminal_type: const
+  img_h: 90
+  img_w: 160
+  max_step_train: 200
+  max_step_eval: 200
+  obs_channel: 12
+  fixed_init: true
+  sparse_reward: false
+  num_env_train: 1000
+  reward_type: task
+  reward_goal: 5
+  reward_wander: 1
+  reward_obs: -10
+  #
+  mesh_parent_path: data/3d-front-house-meshes
+  fill_obs: false
+  camera_tilt: 15
+  camera_tilt_range: [15, 25]
+  camera_roll_noise_std: 3
+  perf_xdot_range: [0.5, 1.0]
+  backup_xdot_range: [0.2, 0.5]
+
+device: cuda:0
+traj_size: 4
+frame_skip: 3
+shield_dict:
+  type: value
+  threshold: -0.05
+
+performance:
+  train:
+    eval: true
+    device: cuda:0
+    batch_size: 128
+    update_period: 1
+    alpha: 0.5
+    learn_alpha: false
+    gamma: 0.99
+    gamma_schedule: false
+    lr_a: 0.001
+    lr_al: 0.001
+    lr_c: 0.001
+    lr_a_schedule: false
+    lr_c_schedule: false
+    mode: performance
+    tau: 0.01
+    terminal_type: none
+    actor_path: checkpoint/advanced/pac_perf/perf-actor.pth
+    critic_path: checkpoint/advanced/pac_perf/perf-critic.pth
+    # latent
+    lr_d: 0.001
+    disc_batch_size: 32
+    disc_recent_size: 1000
+    aug_reward_range: 1
+    aug_reward_range_schedule: False
+    aug_reward_range_init: 0.0
+    aug_reward_range_end: 1.0
+    aug_reward_range_step: 1.0
+    aug_reward_range_period: 1500
+    latent_dim: 20
+    latent_dim_cnn: 10
+    latent_std_schedule: False
+    latent_prior_std: 0.5
+    latent_std_init: 0.5
+    latent_std_end: 2.0
+    latent_std_step: 0.5
+    latent_std_min_step: 0
+    latent_std_period: 5000
+  arch:
+    critic_has_act_ind: false
+    act_ind: 
+    - 1
+    activation:
+      actor: ReLU
+      critic: ReLU
+    kernel_size:
+    - 7
+    - 5
+    - 3
+    stride:
+    - 4
+    - 3
+    - 2
+    n_channel:
+    - 16
+    - 32
+    - 64
+    mlp_dim:
+      actor:
+      - 256
+      - 256
+      - 256
+      critic:
+      - 256
+      - 256
+      - 256
+      disc:
+      - 256
+      - 256
+    append_dim: 2
+    use_bn: false
+    use_ln: true
+    use_sm: false
+    use_spec_disc: true
+
+backup:
+  train:
+    eval: true
+    device: cuda:0
+    alpha: 0.01
+    learn_alpha: true
+    batch_size: 128
+    gamma: 0.8
+    gamma_decay: 0.5
+    gamma_end: 0.995
+    gamma_period: 400000
+    gamma_schedule: true
+    lr_a: 0.001
+    lr_al: 0.0001
+    lr_c: 0.001
+    lr_a_schedule: false
+    lr_c_schedule: false
+    mode: safety
+    tau: 0.01
+    terminal_type: none
+    actor_path: checkpoint/advanced/pac_perf/backup-actor.pth
+    critic_path: checkpoint/advanced/pac_perf/backup-critic.pth
+    # latent
+    latent_dim: 0
+    latent_dim_cnn: 0
+  arch:
+    critic_has_act_ind: true
+    act_ind:
+      - -1
+    activation:
+      actor: ReLU
+      critic: ReLU
+    kernel_size:
+    - 7
+    - 5
+    - 3
+    stride:
+    - 4
+    - 3
+    - 2
+    n_channel:
+    - 16
+    - 32
+    - 64
+    mlp_dim:
+      actor:
+      - 256
+      - 256
+      - 256
+      critic:
+      - 256
+      - 256
+      - 256
+    append_dim: 2
+    use_bn: false
+    use_ln: true
+    use_sm: false

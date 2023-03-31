@@ -1,0 +1,203 @@
+# setting: advanced-realistic
+# method: PAC-Both, posterior
+
+# Please update env.dataset to dataset path, env.mesh_parent_path to house folder
+
+# Please update agent.out_folder to the path of the output folder
+
+# Please update performance.train.actor_path, performance.train.critic_path, backup.train.actor_path, backup.train.critic_path to the path of the sim-trained actor and critic
+
+env:
+  venv_seed: 42
+  name: advanced-realistic
+  dataset: data/advanced_realistic_ps_train_1000.pkl
+  action_dim: 2
+  action_mag: 1.0
+  use_append: true
+  obs_buffer: 0.25
+  g_x_fail: 0.25
+  terminal_type: const
+  img_h: 90
+  img_w: 160
+  max_step_train: 200
+  max_step_eval: 200
+  obs_channel: 12
+  fixed_init: true
+  sparse_reward: false
+  num_env_train: 1000
+  reward_type: task
+  reward_goal: 5
+  reward_wander: 1
+  reward_obs: -10
+  #
+  mesh_parent_path: data/3d-front-house-meshes
+  fill_obs: false
+  camera_tilt: 15
+  camera_tilt_range: [15, 25]
+  camera_roll_noise_std: 3
+  perf_xdot_range: [0.5, 1.0]
+  backup_xdot_range: [0.2, 0.5]
+
+agent:
+  use_wandb: false
+  device: cuda:0
+  image_device: cpu
+  num_cpus: 10
+  num_gpu_envs: 5
+  cpu_offset: 0
+  seed: 42
+  entity: pac-saferl
+  project: posterior
+  run: lab_pac_both_advanced_dense
+  out_folder: result/lab_pac_both_advanced_dense
+  name: PolicyPosteriorStackBothLatent
+  save_top_k: 20
+  save_metric: value
+  max_steps: 4000000
+  memory_capacity: 5000
+  check_opt_freq: 1
+  min_steps_b4_opt: 0
+  optimize_freq: 100
+  update_per_opt: 10
+  num_visualize_task: 1
+  num_traj_per_visual_init: 5
+  num_traj_per_env: 1
+  plot_v: true
+  #
+  shield_dict:
+    type: value
+    threshold: -0.10
+  train_shield_dict:
+    type: value
+    threshold: -0.05
+  #
+  use_append_noise: false
+  #
+  traj_size: 4
+  frame_skip: 3
+  #
+  delta: 0.01
+
+performance:
+  train:
+    eval: false
+    device: cuda:0
+    batch_size: 128
+    update_period: 1
+    alpha: 0.5  # not used
+    learn_alpha: false  # not used
+    gamma: 0.99
+    gamma_schedule: false
+    lr_a: 0.0001
+    lr_al: 0.001
+    lr_c: 0.0001
+    lr_a_schedule: false
+    lr_c_schedule: false
+    mode: performance
+    tau: 0.01
+    terminal_type: none
+    actor_path: ?
+    critic_path: ?
+    #
+    latent_dim: 20
+    latent_dim_cnn: 10
+    latent_prior_std: 2
+    lr_lm: 0.0001
+    lr_ll: 0.0001
+    div_weight: 2.0
+    bound_type: kl
+  arch:
+    critic_has_act_ind: false
+    act_ind:
+      - 1
+    activation:
+      actor: ReLU
+      critic: ReLU
+    kernel_size:
+    - 7
+    - 5
+    - 3
+    stride:
+    - 4
+    - 3
+    - 2
+    n_channel:
+    - 16
+    - 32
+    - 64
+    mlp_dim:
+      actor:
+      - 256
+      - 256
+      - 256
+      critic:
+      - 256
+      - 256
+      - 256
+    append_dim: 2
+    use_bn: false
+    use_ln: true
+    use_sm: false
+
+backup:
+  train:
+    eval: false
+    device: cuda:0
+    alpha: 0.0001
+    learn_alpha: false
+    batch_size: 128
+    gamma: 0.8
+    gamma_decay: 0.5
+    gamma_end: 0.99
+    gamma_period: 250000
+    gamma_schedule: true
+    lr_a: 0.0003
+    lr_al: 0.0001
+    lr_c: 0.0003
+    lr_a_schedule: false
+    lr_c_schedule: false
+    mode: safety
+    tau: 0.01
+    terminal_type: none
+    actor_path: ?
+    critic_path: ?
+    #
+    latent_dim: 10
+    latent_dim_cnn: 5
+    latent_prior_std: 2
+    lr_lm: 0.0001
+    lr_ll: 0.0001
+    div_weight: 2.0
+    bound_type: kl
+  arch:
+    critic_has_act_ind: true
+    act_ind:
+      - -1
+    activation:
+      actor: ReLU
+      critic: ReLU
+    kernel_size:
+    - 7
+    - 5
+    - 3
+    stride:
+    - 4
+    - 3
+    - 2
+    n_channel:
+    - 16
+    - 32
+    - 64
+    mlp_dim:
+      actor:
+      - 256
+      - 256
+      - 256
+      critic:
+      - 256
+      - 256
+      - 256
+    append_dim: 2
+    use_bn: false
+    use_ln: true
+    use_sm: false
