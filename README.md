@@ -3,7 +3,7 @@ Sim-to-Lab-to-Real: Safe Reinforcement Learning with Shielding and Generalizatio
 
 <img src="media/teaser.png" alt="drawing" width="88%"/>
 
-[[Webpage]](https://SafeRoboticsLab.github.io/SimLabReal) | [[Paper]](https://www.sciencedirect.com/science/article/abs/pii/S0004370222001515)
+[[Webpage]](https://SafeRoboticsLab.github.io/SimLabReal) | [[Paper]](https://www.sciencedirect.com/science/article/abs/pii/S0004370222001515) | [[arXiv]](https://arxiv.org/abs/2201.08355)
 
 [Kai-Chieh Hsu](https://kaichiehhsu.github.io/)<sup>1</sup>,
 [Allen Z. Ren](https://allenzren.github.io/)<sup>1</sup>,
